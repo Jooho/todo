@@ -404,7 +404,7 @@ s3_secret_key = "env(S3_SECRET_KEY)"
 
 [functions.send-notification]
 enabled = true
-verify_jwt = false
+verify_jwt = true
 entrypoint = "./functions/send-notification/index.ts"
 
 [functions.api-proxy]

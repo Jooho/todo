@@ -166,9 +166,13 @@ DROP POLICY IF EXISTS "Users access own and shared tasks" ON tasks;
 
 CREATE POLICY "Users access own and shared tasks" ON tasks
     FOR ALL USING (
-        user_id = auth.uid()
-        OR shared_calendar_id IN (
-            SELECT calendar_id FROM calendar_members WHERE user_id = auth.uid()
+        -- Only approved users can access tasks
+        auth.jwt()->>'email' IN (SELECT email FROM approved_users WHERE status = 'approved')
+        AND (
+            user_id = auth.uid()
+            OR shared_calendar_id IN (
+                SELECT calendar_id FROM calendar_members WHERE user_id = auth.uid()
+            )
         )
     );
 

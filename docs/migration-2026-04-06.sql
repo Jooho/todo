@@ -45,3 +45,16 @@ END $$;
 INSERT INTO approved_users (email, status, reviewed_at, reviewed_by)
 VALUES ('ljhiyh@gmail.com', 'approved', NOW(), 'system')
 ON CONFLICT (email) DO NOTHING;
+
+-- Security: only approved users can access tasks
+DROP POLICY IF EXISTS "Users access own and shared tasks" ON tasks;
+CREATE POLICY "Users access own and shared tasks" ON tasks
+    FOR ALL USING (
+        auth.jwt()->>'email' IN (SELECT email FROM approved_users WHERE status = 'approved')
+        AND (
+            user_id = auth.uid()
+            OR shared_calendar_id IN (
+                SELECT calendar_id FROM calendar_members WHERE user_id = auth.uid()
+            )
+        )
+    );

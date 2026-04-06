@@ -598,6 +598,8 @@ function isDueSoon(task) {
     return diff > 0 && diff < 24 * 60 * 60 * 1000;
 }
 
+function safeColor(c) { return /^#[0-9A-Fa-f]{3,8}$/.test(c) ? c : "#888888"; }
+
 function formatDateKey(d) {
     return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
 }
@@ -711,9 +713,9 @@ function renderDashboard() {
         const p = getProgress(cat.id);
         const el = document.createElement("div"); el.className = "cat-stat";
         el.style.cursor = "pointer";
-        el.innerHTML = `<span class="cat-stat-dot" style="background:${cat.color}"></span>
-            <div class="cat-stat-info"><div class="cat-stat-label">${cat.label}</div><div class="cat-stat-nums">${p.done}/${p.total}</div></div>
-            <div class="cat-stat-bar"><div class="cat-stat-bar-fill" style="width:${p.pct}%;background:${cat.color}"></div></div>`;
+        el.innerHTML = `<span class="cat-stat-dot" style="background:${safeColor(cat.color)}"></span>
+            <div class="cat-stat-info"><div class="cat-stat-label">${escapeHtml(cat.label)}</div><div class="cat-stat-nums">${p.done}/${p.total}</div></div>
+            <div class="cat-stat-bar"><div class="cat-stat-bar-fill" style="width:${p.pct}%;background:${safeColor(cat.color)}"></div></div>`;
         el.addEventListener("click", () => { activeFilter = cat.id; saveFilter(); setActiveView("list"); renderAll(); });
         c.appendChild(el);
     }
@@ -1394,7 +1396,7 @@ function renderFilterButtons() {
         const btn = document.createElement("button");
         btn.className = "filter-btn" + (activeFilter === cat.id ? " active" : "");
         btn.dataset.filter = cat.id;
-        btn.innerHTML = `<span class="filter-dot" style="background:${cat.color}"></span> ${escapeHtml(cat.label)}`;
+        btn.innerHTML = `<span class="filter-dot" style="background:${safeColor(cat.color)}"></span> ${escapeHtml(cat.label)}`;
         btn.addEventListener("click", () => { activeFilter = cat.id; saveFilter(); renderAll(); });
         container.appendChild(btn);
     }
@@ -1653,7 +1655,7 @@ function renderCategoryList() {
         const item = document.createElement("div");
         item.className = "cat-item";
         item.innerHTML = `
-            <span class="cat-item-dot" style="background:${cat.color}"></span>
+            <span class="cat-item-dot" style="background:${safeColor(cat.color)}"></span>
             <span class="cat-item-label">${escapeHtml(cat.label)}</span>
             <span class="cat-item-count">${count} tasks</span>
         `;
