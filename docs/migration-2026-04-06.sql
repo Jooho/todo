@@ -12,3 +12,6 @@ DO $$ BEGIN
     ALTER PUBLICATION supabase_realtime ADD TABLE tasks;
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
+
+-- Enable FULL replica identity so DELETE events include old row data
+ALTER TABLE tasks REPLICA IDENTITY FULL;

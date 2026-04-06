@@ -56,7 +56,7 @@ function loadTasks() {
     try { const r = localStorage.getItem(STORAGE_KEY); if (r) return JSON.parse(r); } catch(_) {}
     return [];
 }
-function saveTasks() { localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks)); }
+function saveTasks() { if (!_useSupabase()) localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks)); }
 
 function loadFilter() { return localStorage.getItem(FILTER_KEY) || "all"; }
 function saveFilter() { localStorage.setItem(FILTER_KEY, activeFilter); }
@@ -158,22 +158,19 @@ function _reloadSharedTasks() {
 }
 
 function deleteTask(id) {
-    const found = _findTask(id);
+    // Remove from local arrays immediately so UI updates instantly
+    tasks = tasks.filter(t => t.id !== id);
+    if (typeof SharedCalendar !== "undefined") {
+        SharedCalendar._sharedTasks = SharedCalendar._sharedTasks.filter(t => t.id !== id);
+    }
+    renderAll();
+
     if (_useSupabase()) {
         DB.supabase.from("tasks").delete().eq("id", id).then(({ error }) => {
-            if (error) { showToast("Delete failed: " + error.message); return; }
-            if (found && found.isShared) {
-                _reloadSharedTasks();
-            } else {
-                tasks = tasks.filter(t => t.id !== id);
-                renderAll();
-                loadTasksFromSupabase();
-            }
+            if (error) showToast("Delete failed: " + error.message);
         });
     } else {
-        tasks = tasks.filter(t => t.id !== id);
         saveTasks();
-        renderAll();
     }
 }
 
@@ -365,15 +362,27 @@ function _executeClearActions(taskActions) {
 // ============================================================
 // Section 4: Helpers
 // ============================================================
+function getAllTasks() {
+    let all = tasks.slice();
+    if (typeof SharedCalendar !== "undefined" && SharedCalendar._sharedTasks.length) {
+        // Add shared tasks, avoiding duplicates by id
+        const ids = new Set(all.map(t => t.id));
+        for (const t of SharedCalendar._sharedTasks) {
+            if (!ids.has(t.id)) all.push(t);
+        }
+    }
+    return all;
+}
+
 function getFilteredTasks() {
-    let list = tasks;
+    let list = getAllTasks();
     if (activeFilter !== "all") list = list.filter(t => t.category === activeFilter);
     if (searchQuery) { const q = searchQuery.toLowerCase(); list = list.filter(t => t.text.toLowerCase().includes(q)); }
     return list.slice().sort((a, b) => Number(a.completed) - Number(b.completed));
 }
 
 function getProgress(cat) {
-    let list = tasks;
+    let list = getAllTasks();
     if (cat) list = list.filter(t => t.category === cat);
     const total = list.length, done = list.filter(t => t.completed).length;
     return { total, done, remaining: total - done, pct: total ? Math.round(done / total * 100) : 0 };
@@ -381,7 +390,7 @@ function getProgress(cat) {
 
 function getTodayCount() {
     const today = new Date().toDateString();
-    return tasks.filter(t => new Date(t.createdAt).toDateString() === today).length;
+    return getAllTasks().filter(t => new Date(t.createdAt).toDateString() === today).length;
 }
 
 function timeAgo(iso) {
@@ -475,6 +484,7 @@ function renderAll() {
     renderDashboard();
     renderFilterButtons();
     renderCategorySelect();
+    // Always update calendar data (even when not visible) so switching tabs is instant
     if (settings.activeView === "list") {
         renderTaskList();
         renderClearBtn();
@@ -485,11 +495,17 @@ function renderAll() {
     } else if (settings.activeView === "settings") {
         renderSettingsView();
     }
+    // Pre-render calendar grid if it exists (so it's fresh when switching tabs)
+    if (settings.activeView !== "calendar" && document.getElementById("cal-grid")) {
+        Calendar.render();
+    }
 }
 
 function renderDashboard() {
     const all = getProgress();
-    document.getElementById("stats-text").textContent = `${all.done}/${all.total} completed (${all.pct}%)`;
+    const filtered = getFilteredTasks();
+    const filterLabel = activeFilter === "all" ? "" : ` (${activeFilter}: ${filtered.length})`;
+    document.getElementById("stats-text").textContent = `${all.done}/${all.total} completed (${all.pct}%)${filterLabel}`;
     document.getElementById("stats-today").textContent = `Today: ${getTodayCount()}`;
     document.getElementById("progress-fill").style.width = `${all.pct}%`;
     document.getElementById("remaining-badge").textContent = all.remaining;
@@ -562,9 +578,12 @@ function createTaskElement(task) {
     }
 
     // Show subtask progress
-    if (task.subtasks && task.subtasks.length > 0) {
-        const done = task.subtasks.filter(s => s.completed).length;
-        const total = task.subtasks.length;
+    let subs = task.subtasks;
+    if (typeof subs === "string") try { subs = JSON.parse(subs); } catch(_) { subs = []; }
+    if (Array.isArray(subs) && subs.length > 0) {
+        task.subtasks = subs; // fix in place
+        const done = subs.filter(s => s.completed).length;
+        const total = subs.length;
         const left = total - done;
         const pct = Math.round((done / total) * 100);
         const subSpan = document.createElement("div");
@@ -602,7 +621,11 @@ function createTaskElement(task) {
 
     const delBtn = document.createElement("button"); delBtn.className = "delete-btn";
     delBtn.textContent = "\u2715"; delBtn.title = "Delete";
-    delBtn.addEventListener("click", (e) => { e.stopPropagation(); li.classList.add("removing"); li.addEventListener("animationend", () => deleteTask(task.id)); });
+    delBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        li.classList.add("removing");
+        deleteTask(task.id);
+    });
     if (!canDel) delBtn.style.display = "none";
 
     li.appendChild(cb); li.appendChild(tag); li.appendChild(content); li.appendChild(delBtn);
@@ -711,7 +734,7 @@ function loadArchive() {
     try { const r = localStorage.getItem(ARCHIVE_KEY); if (r) return JSON.parse(r); } catch(_) {}
     return [];
 }
-function saveArchive() { localStorage.setItem(ARCHIVE_KEY, JSON.stringify(archivedTasks)); }
+function saveArchive() { if (!_useSupabase()) localStorage.setItem(ARCHIVE_KEY, JSON.stringify(archivedTasks)); }
 
 async function loadArchivedFromSupabase() {
     if (!_useSupabase()) return;
@@ -1348,6 +1371,7 @@ function saveSupabaseSettings() {
 // Section 7b: Realtime subscription for personal tasks
 // ============================================================
 let _personalTasksSub = null;
+let _realtimeTimer = null;
 
 function _subscribePersonalTasks() {
     if (!DB.supabase || !Auth.getUserId()) return;
@@ -1361,7 +1385,9 @@ function _subscribePersonalTasks() {
             table: "tasks",
             filter: `user_id=eq.${Auth.getUserId()}`,
         }, () => {
-            loadTasksFromSupabase();
+            // Debounce: avoid double-reload when our own CRUD triggers realtime
+            clearTimeout(_realtimeTimer);
+            _realtimeTimer = setTimeout(() => loadTasksFromSupabase(), 500);
         })
         .subscribe();
 }
@@ -1414,6 +1440,11 @@ document.addEventListener("DOMContentLoaded", () => {
     if (typeof Auth !== "undefined") {
         Auth.init(supabaseReady ? DB.supabase : null).then(() => {
             if (Auth.getUserId() && DB.isConnected) {
+                // DB is the source of truth — clear local data
+                tasks = [];
+                archivedTasks = [];
+                localStorage.removeItem(STORAGE_KEY);
+                localStorage.removeItem(ARCHIVE_KEY);
                 // Load all data from Supabase
                 loadTasksFromSupabase();
                 loadArchivedFromSupabase();
@@ -1535,13 +1566,10 @@ document.addEventListener("DOMContentLoaded", () => {
         const date = dueDateInput.value;
         const time = alldayCheck.checked ? "" : dueTimeInput.value;
 
-        // Always create as Personal task (no shared_calendar_id)
-        addTask(text, cat, date, time, "", "");
-
-        // Also create copies in selected shared calendars
-        for (const calId of _selectedSharedCalIds) {
-            addTask(text, cat, date, time, "", calId);
-        }
+        // Create one task. If shared calendar selected, set shared_calendar_id.
+        // Task belongs to the selected calendar (or Personal if none selected).
+        const calId = _selectedSharedCalIds.length > 0 ? _selectedSharedCalIds[0] : "";
+        addTask(text, cat, date, time, "", calId);
 
         if (openDetail) {
             const newTask = tasks[tasks.length - 1];

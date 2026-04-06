@@ -144,7 +144,7 @@ const DB = {
             created_at: task.createdAt,
             updated_at: task.updatedAt || task.createdAt,
             user_id: (typeof Auth !== "undefined" && Auth.getUserId()) ? Auth.getUserId() : null,
-            subtasks: JSON.stringify(task.subtasks || []),
+            subtasks: task.subtasks || [],
         };
     },
 

@@ -503,23 +503,29 @@ const SharedCalendar = {
         if (!DB.supabase || !this.enabledCalendarIds.length) return;
         this.unsubscribe(); // clean up previous
 
+        // No filter — DELETE events don't carry old row data for filtered subscriptions
         this._subscription = DB.supabase
             .channel("shared-tasks-changes")
             .on("postgres_changes", {
                 event: "*",
                 schema: "public",
                 table: "tasks",
-                filter: `shared_calendar_id=in.(${this.enabledCalendarIds.join(",")})`,
             }, (payload) => {
-                console.log("Realtime event:", payload.eventType);
-                // Reload shared tasks and re-render
-                this.loadSharedTasks().then(() => {
-                    if (typeof renderAll === "function") renderAll();
-                });
+                // Only reload if the change is relevant to our shared calendars
+                const calId = (payload.new && payload.new.shared_calendar_id) || (payload.old && payload.old.shared_calendar_id);
+                if (calId && this.enabledCalendarIds.includes(calId)) {
+                    this.loadSharedTasks().then(() => {
+                        if (typeof renderAll === "function") renderAll();
+                    });
+                }
+                // For DELETE, old might not have shared_calendar_id, so reload anyway
+                if (payload.eventType === "DELETE") {
+                    this.loadSharedTasks().then(() => {
+                        if (typeof renderAll === "function") renderAll();
+                    });
+                }
             })
-            .subscribe((status) => {
-                if (status === "SUBSCRIBED") console.log("Realtime: subscribed to shared tasks");
-            });
+            .subscribe();
     },
 
     unsubscribe() {

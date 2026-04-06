@@ -159,24 +159,24 @@ const DetailPanel = {
         // Update the task itself
         if (typeof updateTask === "function") updateTask(this._taskId, data);
 
-        // Copy to newly checked shared calendars
+        // Update shared_calendar_id if changed
         const calList = document.getElementById("dp-calendar-list");
-        if (calList && typeof SharedCalendar !== "undefined" && typeof _useSupabase === "function" && _useSupabase()) {
+        if (calList && typeof _useSupabase === "function" && _useSupabase()) {
+            const checked = calList.querySelector("input[type=checkbox]:checked");
+            const newCalId = checked ? checked.value : null;
             const found = typeof _findTask === "function" ? _findTask(this._taskId) : null;
-            const currentCalId = found ? found.task.shared_calendar_id : null;
-            const checkboxes = calList.querySelectorAll("input[type=checkbox]");
-            for (const cb of checkboxes) {
-                if (cb.checked && cb.value !== currentCalId) {
-                    // Create a copy in this shared calendar
-                    if (typeof addTask === "function") {
-                        addTask(data.text, data.category, data.dueDate, data.dueTime, data.description, cb.value);
-                    }
-                }
+            const oldCalId = found ? (found.task.shared_calendar_id || null) : null;
+            if (newCalId !== oldCalId) {
+                DB.supabase.from("tasks").update({
+                    shared_calendar_id: newCalId
+                }).eq("id", this._taskId).then(() => {
+                    if (typeof loadTasksFromSupabase === "function") loadTasksFromSupabase();
+                    if (typeof SharedCalendar !== "undefined") SharedCalendar.loadSharedTasks().then(() => { if (typeof renderAll === "function") renderAll(); });
+                });
             }
         }
 
         if (typeof renderAll === "function") renderAll();
-        // Re-render panel with updated task
         const found2 = typeof _findTask === "function" ? _findTask(this._taskId) : null;
         if (found2) this.render(found2.task);
     },
