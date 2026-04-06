@@ -21,6 +21,17 @@
         </div>
     </div>
 
+    <!-- Pending Approval Page -->
+    <div class="login-page" id="pending-page" style="display:none">
+        <div class="login-card">
+            <h1 class="login-title">Access Pending</h1>
+            <p class="pending-email" id="pending-email"></p>
+            <p class="login-subtitle" id="pending-message">Your access request is pending approval.</p>
+            <p class="login-subtitle">The admin will review your request.</p>
+            <button class="google-login-btn" id="pending-signout" style="background:#666;border-color:#666;margin-top:16px;">Sign out</button>
+        </div>
+    </div>
+
     <!-- App (hidden until authenticated) -->
     <div class="app" id="app-container" role="main" aria-label="Todo Manager" style="display:none">
 
@@ -61,7 +72,7 @@
             <div class="category-stats" id="dashboard-categories"></div>
 
             <!-- View tabs -->
-            <div class="sidebar-section">
+            <div class="sidebar-section" id="view-tabs-section">
                 <div class="section-label">View</div>
                 <div class="view-tabs" id="view-tabs">
                     <button class="view-tab active" data-view="list" aria-label="List view"><span class="vt-icon">&#128203;</span><span class="vt-label"> List</span></button>
@@ -118,6 +129,7 @@
         <main class="main-content">
             <!-- ===== List View ===== -->
             <div id="list-view">
+                <h1 class="mobile-title" id="mobile-title"></h1>
                 <div class="list-toolbar">
                     <div class="toolbar-row">
                         <input type="text" id="search-input" placeholder="Search..." class="search-input toolbar-search" aria-label="Search tasks">
@@ -140,6 +152,10 @@
                             <button id="add-detail-btn" class="add-detail-toggle" aria-label="Add with details" title="Add with details">&#9662;</button>
                         </div>
                     </div>
+                </div>
+                <div class="mobile-progress" id="mobile-progress">
+                    <div class="mobile-progress-bar"><div class="mobile-progress-fill" id="mobile-progress-fill"></div></div>
+                    <span class="mobile-progress-text" id="mobile-progress-text"></span>
                 </div>
 
                 <ul id="task-list" role="list" aria-label="Task list"></ul>
@@ -245,6 +261,13 @@
                         <div class="settings-hint" style="margin-top:12px;font-weight:600;">API Usage</div>
                         <pre class="api-docs-code" id="api-docs-code"></pre>
                     </div>
+                </section>
+
+                <!-- Admin only: User Management -->
+                <section class="settings-section" id="user-management-section" style="display:none">
+                    <h3 class="settings-label">User Management</h3>
+                    <p class="settings-hint">Approve or reject user access requests.</p>
+                    <div id="user-management-list"></div>
                 </section>
 
                 <section class="settings-section">

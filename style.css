@@ -454,6 +454,26 @@ kbd {
 .task-item.completed .task-text { text-decoration: line-through; color: var(--text-faint); }
 .task-time { font-size: 0.8rem; color: var(--text-faint); margin-top: 4px; }
 
+/* Mobile-only title */
+.mobile-title {
+    display: none;
+    text-align: center; font-size: 1.2rem; font-weight: 700;
+    color: var(--accent); margin: 4px 0 0; padding: 0;
+}
+.mobile-progress {
+    display: none; /* shown only on mobile via media query */
+    align-items: center; gap: 8px; padding: 4px 0;
+}
+.mobile-progress-bar {
+    flex: 1; height: 4px; border-radius: 2px; background: var(--border); overflow: hidden;
+}
+.mobile-progress-fill {
+    height: 100%; border-radius: 2px; background: var(--accent); transition: width 0.3s;
+}
+.mobile-progress-text {
+    font-size: 0.72rem; color: var(--text-faint); white-space: nowrap;
+}
+
 /* Subtask progress — styles defined at bottom of file */
 
 .highlight { background: #ffe066; border-radius: 2px; padding: 0 2px; }
@@ -1045,6 +1065,33 @@ body.sidebar-collapsed .main-content { margin-left: 60px; }
     background: var(--accent); color: #fff; font-size: 1rem; cursor: pointer;
 }
 
+/* User management (admin) */
+.um-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 12px; border-radius: 8px; margin-bottom: 6px;
+    background: var(--surface2); border: 1px solid var(--border-light);
+}
+.um-email { flex: 1; font-size: 0.85rem; color: var(--text2); overflow: hidden; text-overflow: ellipsis; }
+.um-status {
+    font-size: 0.72rem; padding: 3px 10px; border-radius: 10px; font-weight: 600;
+}
+.um-status.pending { background: #F39C1218; color: #F39C12; }
+.um-status.approved { background: #27AE6018; color: #27AE60; }
+.um-status.rejected { background: var(--danger-bg); color: var(--danger); }
+.um-btn {
+    padding: 4px 10px; border: 1px solid var(--border); border-radius: 6px;
+    font-size: 0.72rem; cursor: pointer; background: var(--surface); color: var(--text2);
+}
+.um-btn.approve { color: #27AE60; border-color: #27AE60; }
+.um-btn.approve:hover { background: #27AE60; color: #fff; }
+.um-btn.reject { color: var(--danger); border-color: var(--danger); }
+.um-btn.reject:hover { background: var(--danger); color: #fff; }
+.um-btn.remove { color: var(--text-faint); }
+.um-btn.remove:hover { color: var(--danger); }
+.um-date { font-size: 0.7rem; color: var(--text-faint); }
+
+.pending-email { font-size: 0.85rem; color: var(--accent); font-weight: 600; margin-bottom: 8px; }
+
 .dp-shared-section { margin-bottom: 8px; }
 .dp-calendar-list { display: flex; flex-direction: column; gap: 2px; }
 .dp-cal-option {
@@ -1334,45 +1381,95 @@ body.dark .sm-member-role-badge.editor { background: #1e3a5f; color: #93c5fd; }
    RESPONSIVE: <=768px — sidebar becomes top section, single column
    ==================================================================== */
 @media (max-width: 768px) {
-    .app { flex-direction: column; }
+    .app { flex-direction: column; min-height: 100vh; }
 
+    /* === Sidebar → bottom nav === */
     .sidebar {
-        position: static;
-        width: 100%;
-        border-right: none;
-        border-bottom: 1px solid var(--border);
-        padding: 20px 16px;
-        gap: 12px;
-        overflow-y: visible;
+        position: fixed !important; bottom: 0; left: 0; right: 0; top: auto !important;
+        width: 100% !important; height: auto !important;
+        border-right: none; border-top: 1px solid var(--border);
+        padding: 6px 0 env(safe-area-inset-bottom, 4px) !important;
+        gap: 0; z-index: 100;
+        overflow: visible;
     }
 
-    .shortcuts-hint { display: none; }
-
-    .filter-list { flex-direction: row; flex-wrap: wrap; gap: 6px; }
-    .filter-btn {
-        width: auto;
-        padding: 7px 14px;
-        border: 1px solid var(--border);
-        border-radius: 20px;
+    /* Hide everything in sidebar except view tabs */
+    .sidebar > *:not(#view-tabs-section) { display: none !important; }
+    .sidebar #view-tabs-section.sidebar-section { display: flex !important; justify-content: center; }
+    .sidebar #view-tabs-section .section-label { display: none; }
+    .view-tabs {
+        display: flex; flex-direction: row; gap: 0;
+        justify-content: space-evenly; align-items: center;
+        width: 100%; max-width: 400px; margin: 0 auto;
     }
-    .filter-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .view-tab {
+        flex: 1; display: flex; align-items: center; justify-content: center;
+        padding: 10px 0; text-align: center;
+        border: none; border-radius: 8px; background: transparent;
+        min-width: 0; transition: background 0.15s;
+    }
+    .view-tab .vt-label { display: none; }
+    .view-tab .vt-icon { font-size: 1.3rem; line-height: 1; }
+    .view-tab.active { background: var(--accent-light); color: var(--accent); }
 
-    .category-stats { flex-direction: row; flex-wrap: wrap; gap: 6px; }
-    .cat-stat { flex: 1; min-width: 140px; }
+    /* === Collapse button hidden === */
+    .sidebar-collapse-btn { display: none !important; }
 
-    .main-content { margin-left: 0; padding: 20px 16px; max-width: 100%; }
+    /* === Main content fills screen above bottom nav === */
+    .main-content {
+        margin-left: 0 !important; margin-right: 0 !important;
+        padding: 8px 12px 70px; /* 70px bottom for nav bar */
+        max-width: 100%; flex: 1;
+    }
     .main-content.panel-open { margin-right: 0 !important; }
     .detail-panel { display: none !important; }
 
-    .view-tabs { flex-direction: row; gap: 6px; }
-    .view-tab {
-        width: auto; padding: 7px 14px;
-        border: 1px solid var(--border); border-radius: 20px;
+    /* === Compact toolbar === */
+    .list-toolbar { padding: 4px 0 8px; }
+    .toolbar-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 6px;
     }
-    .view-tab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .toolbar-search { grid-column: 1 / -1; }
+    .toolbar-task-input { grid-column: 1 / -1; min-width: 0; }
+    #category-select { grid-column: 1; }
+    .cal-select-wrapper { grid-column: 2; }
+    #due-date-input { grid-column: 1; }
+    .allday-toggle { grid-column: 2; justify-self: start; align-self: center; }
+    .add-btn-group { grid-column: 1 / -1; }
+    #add-btn { flex: 1; padding: 10px; }
+    .add-detail-toggle { padding: 10px; }
 
-    .cal-cell { min-height: 60px; }
-    .cal-task-chip { font-size: 0.65rem; }
+    /* Hide schedule on mobile (can set in detail panel) */
+    .cal-select-wrapper { display: none; }
+
+    /* Mobile title + progress */
+    .mobile-title { display: block !important; }
+    .mobile-progress { display: flex !important; }
+
+    /* === Task items === */
+    .task-item { padding: 12px 10px; gap: 10px; }
+    .task-text { font-size: 0.95rem; }
+    .category-tag { font-size: 0.65rem; padding: 2px 8px; }
+    .delete-btn { opacity: 0.6; }
+
+    /* === Calendar === */
+    .cal-header { flex-wrap: wrap; gap: 6px; }
+    .cal-cell { min-height: 50px; }
+    .cal-task-chip { font-size: 0.6rem; padding: 1px 3px; }
+    .cal-title { font-size: 0.9rem; }
+    .cal-mode-btn { padding: 6px 10px; font-size: 0.75rem; }
+
+    /* === Login page === */
+    .login-card { width: 90%; max-width: 360px; padding: 24px 20px; }
+
+    /* === Settings === */
+    .settings-section { padding: 12px 0; }
+    .settings-input { font-size: 0.85rem; }
+
+    /* === Modals === */
+    .shared-modal, .sm-modal { width: 92%; min-width: 0; max-width: none; }
 }
 
 /* Task creator label */
@@ -1410,16 +1507,16 @@ body.dark .sm-member-role-badge.editor { background: #1e3a5f; color: #93c5fd; }
 #dp-creator-row { margin-bottom: 4px; }
 
 @media (max-width: 480px) {
-    .toolbar-row { gap: 4px; }
-    .toolbar-search { width: 100%; flex: 1 1 100%; }
-    .toolbar-task-input { width: 100%; flex: 1 1 100%; min-width: 0; }
-    #due-date-input, #due-time-input { flex: 1; }
-    #category-select, #calendar-select, #add-btn { flex: 1; }
-    #add-btn { min-height: 44px; }
+    .sidebar { padding: 10px 10px; }
+    .sidebar-header h1 { font-size: 1rem; }
 
-    .delete-btn { opacity: 0.5; }
+    .main-content { padding: 8px; }
+
+    .task-item { padding: 12px 10px; gap: 8px; }
+    .task-text { font-size: 0.95rem; }
+    .task-item input[type="checkbox"] { width: 18px; height: 18px; }
+
     .drag-handle { display: none; }
-    .sidebar-header h1 { font-size: 1.2rem; }
     .edit-hint { display: none; }
 
     .cal-cell { min-height: 40px; }

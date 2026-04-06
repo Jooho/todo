@@ -15,3 +15,33 @@ END $$;
 
 -- Enable FULL replica identity so DELETE events include old row data
 ALTER TABLE tasks REPLICA IDENTITY FULL;
+
+-- User access control
+CREATE TABLE IF NOT EXISTS approved_users (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    email TEXT NOT NULL UNIQUE,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
+    requested_at TIMESTAMPTZ DEFAULT NOW(),
+    reviewed_at TIMESTAMPTZ,
+    reviewed_by TEXT
+);
+
+ALTER TABLE approved_users ENABLE ROW LEVEL SECURITY;
+
+DO $$ BEGIN
+    CREATE POLICY "Users check own status" ON approved_users
+        FOR SELECT USING (email = (SELECT email FROM auth.users WHERE id = auth.uid()));
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+    CREATE POLICY "Admin manages approvals" ON approved_users
+        FOR ALL USING (
+            (SELECT email FROM auth.users WHERE id = auth.uid()) = 'ljhiyh@gmail.com'
+        );
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+INSERT INTO approved_users (email, status, reviewed_at, reviewed_by)
+VALUES ('ljhiyh@gmail.com', 'approved', NOW(), 'system')
+ON CONFLICT (email) DO NOTHING;

@@ -189,7 +189,50 @@ EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
 -- =============================================================
--- 8. ENABLE REALTIME (auto-refresh on task changes)
+-- 8. USER ACCESS CONTROL (admin approval required)
+-- =============================================================
+CREATE TABLE IF NOT EXISTS approved_users (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    email TEXT NOT NULL UNIQUE,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
+    requested_at TIMESTAMPTZ DEFAULT NOW(),
+    reviewed_at TIMESTAMPTZ,
+    reviewed_by TEXT
+);
+
+-- Admin email — first approved user (owner)
+INSERT INTO approved_users (email, status, reviewed_at, reviewed_by)
+VALUES ('ljhiyh@gmail.com', 'approved', NOW(), 'system')
+ON CONFLICT (email) DO NOTHING;
+
+-- No RLS — accessible by service role and anon for login check
+ALTER TABLE approved_users ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Users check own status" ON approved_users;
+DROP POLICY IF EXISTS "Users request access" ON approved_users;
+DROP POLICY IF EXISTS "Admin manages approvals" ON approved_users;
+DROP POLICY IF EXISTS "Users read own" ON approved_users;
+DROP POLICY IF EXISTS "Users insert own" ON approved_users;
+DROP POLICY IF EXISTS "Admin update" ON approved_users;
+DROP POLICY IF EXISTS "Admin delete" ON approved_users;
+
+CREATE POLICY "Users read own" ON approved_users
+    FOR SELECT USING (
+        email = auth.jwt()->>'email'
+        OR auth.jwt()->>'email' = 'ljhiyh@gmail.com'
+    );
+
+CREATE POLICY "Users insert own" ON approved_users
+    FOR INSERT WITH CHECK (email = auth.jwt()->>'email');
+
+CREATE POLICY "Admin update" ON approved_users
+    FOR UPDATE USING (auth.jwt()->>'email' = 'ljhiyh@gmail.com');
+
+CREATE POLICY "Admin delete" ON approved_users
+    FOR DELETE USING (auth.jwt()->>'email' = 'ljhiyh@gmail.com');
+
+-- =============================================================
+-- 9. ENABLE REALTIME (auto-refresh on task changes)
 -- =============================================================
 DO $$ BEGIN
     ALTER PUBLICATION supabase_realtime ADD TABLE tasks;

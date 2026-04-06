@@ -509,6 +509,11 @@ function renderDashboard() {
     document.getElementById("stats-today").textContent = `Today: ${getTodayCount()}`;
     document.getElementById("progress-fill").style.width = `${all.pct}%`;
     document.getElementById("remaining-badge").textContent = all.remaining;
+    // Mobile progress
+    const mpFill = document.getElementById("mobile-progress-fill");
+    const mpText = document.getElementById("mobile-progress-text");
+    if (mpFill) mpFill.style.width = `${all.pct}%`;
+    if (mpText) mpText.textContent = `${all.done}/${all.total} done`;
 
     const c = document.getElementById("dashboard-categories"); c.innerHTML = "";
     for (const cat of categories) {
@@ -1295,6 +1300,84 @@ function renderSettingsView() {
     renderCategoryList();
     loadSupabaseSettings();
     if (window._loadApiTokens && _useSupabase()) window._loadApiTokens();
+    // Admin: show user management
+    const umSection = document.getElementById("user-management-section");
+    if (umSection && typeof Auth !== "undefined" && Auth.isAdmin()) {
+        umSection.style.display = "";
+        _renderUserManagement();
+    } else if (umSection) {
+        umSection.style.display = "none";
+    }
+}
+
+async function _renderUserManagement() {
+    if (typeof Auth === "undefined" || !Auth.isAdmin()) return;
+    const list = document.getElementById("user-management-list");
+    if (!list) return;
+    list.innerHTML = '<div style="color:var(--text-faint);font-size:0.8rem;">Loading...</div>';
+
+    const users = await Auth.loadPendingUsers();
+    list.innerHTML = "";
+
+    if (!users.length) {
+        list.innerHTML = '<div style="color:var(--text-faint);font-size:0.8rem;">No users</div>';
+        return;
+    }
+
+    for (const u of users) {
+        const row = document.createElement("div");
+        row.className = "um-row";
+
+        const email = document.createElement("span");
+        email.className = "um-email";
+        email.textContent = u.email;
+
+        const status = document.createElement("span");
+        status.className = "um-status " + u.status;
+        status.textContent = u.status;
+
+        const date = document.createElement("span");
+        date.className = "um-date";
+        date.textContent = u.reviewed_at ? new Date(u.reviewed_at).toLocaleDateString() : new Date(u.requested_at).toLocaleDateString();
+
+        row.appendChild(email);
+        row.appendChild(status);
+        row.appendChild(date);
+
+        if (u.email !== "ljhiyh@gmail.com") {
+            if (u.status === "pending") {
+                const approveBtn = document.createElement("button");
+                approveBtn.className = "um-btn approve"; approveBtn.textContent = "Approve";
+                approveBtn.addEventListener("click", async () => {
+                    await Auth.approveUser(u.email);
+                    showToast(u.email + " approved");
+                    _renderUserManagement();
+                });
+                const rejectBtn = document.createElement("button");
+                rejectBtn.className = "um-btn reject"; rejectBtn.textContent = "Reject";
+                rejectBtn.addEventListener("click", async () => {
+                    await Auth.rejectUser(u.email);
+                    showToast(u.email + " rejected");
+                    _renderUserManagement();
+                });
+                row.appendChild(approveBtn);
+                row.appendChild(rejectBtn);
+            } else {
+                const removeBtn = document.createElement("button");
+                removeBtn.className = "um-btn remove"; removeBtn.textContent = "Remove";
+                removeBtn.addEventListener("click", async () => {
+                    if (confirm("Remove " + u.email + "?")) {
+                        await Auth.removeUser(u.email);
+                        showToast(u.email + " removed");
+                        _renderUserManagement();
+                    }
+                });
+                row.appendChild(removeBtn);
+            }
+        }
+
+        list.appendChild(row);
+    }
 }
 
 function renderCategoryList() {
@@ -1467,6 +1550,10 @@ document.addEventListener("DOMContentLoaded", () => {
     });
     const logoutBtn = document.getElementById("logout-btn");
     if (logoutBtn) logoutBtn.addEventListener("click", () => {
+        if (typeof Auth !== "undefined") Auth.signOut();
+    });
+    const pendingSignout = document.getElementById("pending-signout");
+    if (pendingSignout) pendingSignout.addEventListener("click", () => {
         if (typeof Auth !== "undefined") Auth.signOut();
     });
 
