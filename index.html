@@ -41,6 +41,7 @@
             <div class="sidebar-header">
                 <h1><span id="app-title">My Tasks</span> <span class="remaining-badge" id="remaining-badge" aria-label="Remaining tasks">0</span></h1>
                 <div class="header-actions">
+                    <button class="icon-btn" id="voice-summary-btn" title="Today's summary (voice)" aria-label="Voice summary">&#128264;</button>
                     <button class="theme-toggle" id="theme-toggle" title="Dark mode (Alt+D)" aria-label="Toggle dark mode">
                         <span class="theme-icon" id="theme-icon">&#9790;</span>
                         <span class="toggle-track"><span class="toggle-thumb"></span></span>
@@ -263,6 +264,24 @@
                     <div class="api-docs-box" id="api-docs-box">
                         <div class="settings-hint" style="margin-top:12px;font-weight:600;">API Usage</div>
                         <pre class="api-docs-code" id="api-docs-code"></pre>
+                    </div>
+                </section>
+
+                <section class="settings-section">
+                    <h3 class="settings-label">Notifications</h3>
+                    <div class="settings-hint">Remind before task due time (requires time set on task)</div>
+                    <select id="reminder-setting" class="settings-input" style="max-width:200px">
+                        <option value="0">Off</option>
+                        <option value="1">1 minute before</option>
+                        <option value="5">5 minutes before</option>
+                        <option value="10">10 minutes before</option>
+                        <option value="30">30 minutes before</option>
+                        <option value="60">1 hour before</option>
+                        <option value="1440">1 day before</option>
+                    </select>
+                    <div class="settings-btn-row" style="margin-top:8px">
+                        <button class="settings-btn" id="test-voice-btn">Test voice summary</button>
+                        <button class="settings-btn" id="test-notification-btn">Test notification</button>
                     </div>
                 </section>
 

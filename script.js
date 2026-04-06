@@ -697,7 +697,9 @@ function renderDashboard() {
     document.getElementById("stats-text").textContent = `${all.done}/${all.total} completed (${all.pct}%)${filterLabel}`;
     document.getElementById("stats-today").textContent = `Today: ${getTodayCount()}`;
     document.getElementById("progress-fill").style.width = `${all.pct}%`;
-    document.getElementById("remaining-badge").textContent = all.remaining;
+    const todayRemaining = _getTodayTasks().length;
+    document.getElementById("remaining-badge").textContent = todayRemaining;
+    document.getElementById("remaining-badge").title = `${todayRemaining} tasks today / ${all.remaining} total remaining`;
     // Mobile progress
     const mpFill = document.getElementById("mobile-progress-fill");
     const mpText = document.getElementById("mobile-progress-text");
@@ -1737,6 +1739,95 @@ function _subscribePersonalTasks() {
 }
 
 // ============================================================
+// Section 7c: Voice Summary + Task Reminders
+// ============================================================
+function _getTodayTasks() {
+    const today = formatDateKey(new Date());
+    return getAllTasks().filter(t => t.dueDate === today && !t.completed);
+}
+
+function speakTodaySummary() {
+    const todayTasks = _getTodayTasks();
+    if (!todayTasks.length) {
+        _speak("No tasks for today. Enjoy your day!");
+        return;
+    }
+
+    const lines = [`You have ${todayTasks.length} task${todayTasks.length > 1 ? "s" : ""} for today.`];
+    todayTasks.forEach((t, i) => {
+        let line = `${i + 1}. ${t.text}`;
+        if (t.dueTime) line += `, at ${t.dueTime}`;
+        if (t.category) line += `, ${getCat(t.category).label}`;
+        lines.push(line);
+    });
+
+    _speak(lines.join(". "));
+    showToast(`${todayTasks.length} tasks for today`);
+}
+
+function _speak(text) {
+    if (!window.speechSynthesis) return;
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = "en-US";
+    u.rate = 0.95;
+    speechSynthesis.speak(u);
+}
+
+// --- Task Reminders ---
+let _reminderTimers = [];
+const REMINDER_KEY = "my-tasks-reminder";
+
+function loadReminderSetting() {
+    return localStorage.getItem(REMINDER_KEY) || "10"; // default 10 minutes
+}
+
+function saveReminderSetting(val) {
+    localStorage.setItem(REMINDER_KEY, val);
+}
+
+function _requestNotificationPermission() {
+    if ("Notification" in window && Notification.permission === "default") {
+        Notification.requestPermission();
+    }
+}
+
+function _scheduleReminders() {
+    // Clear existing timers
+    _reminderTimers.forEach(t => clearTimeout(t));
+    _reminderTimers = [];
+
+    const reminderMinutes = parseInt(loadReminderSetting());
+    if (!reminderMinutes || reminderMinutes <= 0) return;
+
+    const now = Date.now();
+    const todayTasks = _getTodayTasks().filter(t => t.dueTime);
+
+    for (const task of todayTasks) {
+        const dueStr = task.dueDate + "T" + task.dueTime + ":00";
+        const dueTime = new Date(dueStr).getTime();
+        const reminderTime = dueTime - reminderMinutes * 60000;
+        const delay = reminderTime - now;
+
+        if (delay > 0 && delay < 24 * 3600000) {
+            const timer = setTimeout(() => {
+                // Browser notification
+                if ("Notification" in window && Notification.permission === "granted") {
+                    new Notification("Task Reminder", {
+                        body: `${task.text} — in ${reminderMinutes} minutes`,
+                        icon: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📋</text></svg>",
+                    });
+                }
+                // Also speak
+                _speak(`Reminder: ${task.text} in ${reminderMinutes} minutes`);
+                showToast(`Reminder: ${task.text}`);
+            }, delay);
+            _reminderTimers.push(timer);
+        }
+    }
+}
+
+// ============================================================
 // Section 8: Events & Shortcuts
 // ============================================================
 document.addEventListener("DOMContentLoaded", () => {
@@ -1795,6 +1886,9 @@ document.addEventListener("DOMContentLoaded", () => {
                 if (typeof SharedCalendar !== "undefined") SharedCalendar.init();
                 // Realtime for personal tasks — auto-refresh on changes
                 _subscribePersonalTasks();
+                // Notifications + reminders
+                _requestNotificationPermission();
+                setTimeout(() => _scheduleReminders(), 2000);
             }
         });
     }
@@ -2222,6 +2316,32 @@ curl -X POST ${API_BASE} \\
 
     // Theme
     document.getElementById("theme-toggle").addEventListener("click", toggleTheme);
+
+    // Voice summary button
+    document.getElementById("voice-summary-btn").addEventListener("click", speakTodaySummary);
+
+    // Reminder setting
+    const reminderSel = document.getElementById("reminder-setting");
+    if (reminderSel) {
+        reminderSel.value = loadReminderSetting();
+        reminderSel.addEventListener("change", () => {
+            saveReminderSetting(reminderSel.value);
+            _scheduleReminders();
+            showToast(reminderSel.value === "0" ? "Reminders off" : `Reminders: ${reminderSel.value} min before`);
+        });
+    }
+
+    // Test buttons
+    document.getElementById("test-voice-btn").addEventListener("click", speakTodaySummary);
+    document.getElementById("test-notification-btn").addEventListener("click", () => {
+        _requestNotificationPermission();
+        if ("Notification" in window && Notification.permission === "granted") {
+            new Notification("Test Reminder", { body: "This is a test notification from Todo Manager" });
+            showToast("Notification sent");
+        } else {
+            showToast("Please allow notifications first");
+        }
+    });
 
     // Clear completed
     document.getElementById("clear-completed-btn").addEventListener("click", clearCompleted);
