@@ -30,23 +30,23 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // Verify JWT — only authenticated users can send notifications
+    // Verify JWT manually (verify_jwt=false to avoid gateway issues)
     const authHeader = req.headers.get("authorization") || ""
-    const token = authHeader.replace(/^Bearer\s+/i, "").trim()
-    if (!token) {
-      return json({ error: "Authentication required" }, 401, corsHeaders)
+    if (authHeader) {
+      const token = authHeader.replace(/^Bearer\s+/i, "").trim()
+      const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+      const { data: { user } } = await supabase.auth.getUser(token)
+      if (!user) {
+        return json({ error: "Invalid token" }, 401, corsHeaders)
+      }
+    } else {
+      return json({ error: "Authorization required" }, 401, corsHeaders)
     }
 
-    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token)
-    if (authError || !user) {
-      return json({ error: "Invalid or expired token" }, 401, corsHeaders)
-    }
-
-    // Rate limit: max 5 notifications per user per minute (in-memory)
-    const userId = user.id
+    // Rate limit: max 5 notifications per minute (in-memory, per instance)
     const now = Date.now()
-    const key = `rate_${userId}`
+    const ip = req.headers.get("x-forwarded-for") || "unknown"
+    const key = `rate_${ip}`
     const rateData = (globalThis as any)[key] || { count: 0, resetAt: 0 }
     if (now > rateData.resetAt) {
       rateData.count = 0
