@@ -5,6 +5,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="referrer" content="no-referrer">
     <title>My Tasks</title>
     <link rel="stylesheet" href="style.css">
 </head>
@@ -107,6 +108,8 @@
                 <div class="section-label">Calendars</div>
                 <div id="calendar-list"></div>
                 <button class="sc-add-btn" id="shared-cal-create">+ New calendar</button>
+                <button class="sc-add-btn" id="discover-calendars-btn" style="margin-top:4px;">Browse public calendars</button>
+                <div id="discover-calendar-list" style="display:none"></div>
             </div>
 
             <!-- Shortcuts -->
@@ -332,6 +335,7 @@
                 <input type="color" id="sc-color" class="sc-color-input" value="#FF6B6B">
                 <input type="text" id="sc-desc" class="shared-field" placeholder="Description (optional)">
             </div>
+            <label class="sc-public-toggle"><input type="checkbox" id="sc-public"> Public (others can discover and request access)</label>
             <div class="shared-actions">
                 <button class="shared-btn save" id="sc-create-btn">Create</button>
                 <button class="shared-btn cancel" id="sc-cancel-btn">Cancel</button>
@@ -363,6 +367,18 @@
                     <button class="shared-btn small" id="sm-copy-link">Copy</button>
                 </div>
                 <div class="sm-invite-hint">Share this link to invite people as viewers</div>
+            </div>
+
+            <div class="sm-section" id="sm-color-section">
+                <div class="sm-section-label">My display color</div>
+                <div class="sm-color-row">
+                    <input type="color" id="sm-my-color" class="sm-color-input">
+                    <span class="sm-color-hint">Only affects how you see this calendar</span>
+                </div>
+            </div>
+
+            <div class="sm-section" id="sm-public-toggle" style="display:none">
+                <label class="sc-public-toggle"><input type="checkbox" id="sm-public-check"> Public (others can discover and request access)</label>
             </div>
 
             <div class="sm-section sm-danger-zone" id="sm-danger-zone">

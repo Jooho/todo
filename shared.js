@@ -58,9 +58,11 @@ const SharedCalendar = {
             // Calendars I own
             const { data: owned } = await DB.supabase
                 .from("shared_calendars").select("*").eq("owner_id", Auth.getUserId());
-            // Calendars I'm a member of
+            // Calendars I'm a member of (exclude pending)
             const { data: memberships } = await DB.supabase
-                .from("calendar_members").select("calendar_id").eq("user_id", Auth.getUserId());
+                .from("calendar_members").select("calendar_id, role")
+                .eq("user_id", Auth.getUserId())
+                .neq("role", "pending");
             const memberCalIds = (memberships || []).map(m => m.calendar_id);
             let memberCals = [];
             if (memberCalIds.length) {
@@ -73,23 +75,30 @@ const SharedCalendar = {
             const seen = new Set();
             this.calendars = all.filter(c => { if (seen.has(c.id)) return false; seen.add(c.id); return true; });
 
-            // Load my roles for all calendars
+            // Load my roles + color overrides for all calendars
             this._memberRoles = {};
+            this._colorOverrides = {};
             for (const c of this.calendars) {
                 if (c.owner_id === Auth.getUserId()) {
                     this._memberRoles[c.id] = "owner";
                 }
             }
-            if (memberCalIds.length) {
-                const { data: myMemberships } = await DB.supabase
-                    .from("calendar_members").select("calendar_id, role")
-                    .eq("user_id", Auth.getUserId());
-                if (myMemberships) {
-                    for (const m of myMemberships) {
-                        if (!this._memberRoles[m.calendar_id]) this._memberRoles[m.calendar_id] = m.role;
-                    }
+            const { data: myMemberships } = await DB.supabase
+                .from("calendar_members").select("calendar_id, role, color_override")
+                .eq("user_id", Auth.getUserId());
+            if (myMemberships) {
+                for (const m of myMemberships) {
+                    if (!this._memberRoles[m.calendar_id]) this._memberRoles[m.calendar_id] = m.role;
+                    if (m.color_override) this._colorOverrides[m.calendar_id] = m.color_override;
                 }
             }
+            // Auto-enable newly approved calendars
+            for (const c of this.calendars) {
+                if (!this.enabledCalendarIds.includes(c.id) && this._memberRoles[c.id] && this._memberRoles[c.id] !== "pending") {
+                    this.enabledCalendarIds.push(c.id);
+                }
+            }
+            this._saveEnabled();
         } catch (e) { console.error("Load calendars error:", e); }
     },
 
@@ -98,7 +107,7 @@ const SharedCalendar = {
         return this.calendars.some(c => c.name.toLowerCase() === name.toLowerCase());
     },
 
-    async createCalendar(name, color, description) {
+    async createCalendar(name, color, description, isPublic) {
         if (!DB.supabase) { showToast("Supabase not connected"); return null; }
         if (!Auth.getUserId()) { showToast("Please sign in first"); return null; }
         // Duplicate name check
@@ -111,6 +120,7 @@ const SharedCalendar = {
             const { data, error } = await DB.supabase.from("shared_calendars").insert({
                 name, color, description: description || "",
                 owner_id: Auth.getUserId(),
+                is_public: !!isPublic,
             }).select().single();
             if (error) {
                 console.error("Create calendar error:", error);
@@ -155,7 +165,7 @@ const SharedCalendar = {
         if (!DB.supabase) return [];
         try {
             const { data } = await DB.supabase
-                .from("calendar_members").select("*").eq("calendar_id", calId);
+                .from("calendar_members").select("*, requested_role").eq("calendar_id", calId);
             return data || [];
         } catch (e) { return []; }
     },
@@ -173,6 +183,18 @@ const SharedCalendar = {
             await DB.supabase.from("calendar_members")
                 .delete().eq("calendar_id", calId).eq("user_id", userId);
             showToast("Member removed");
+        } catch (e) { console.error(e); }
+    },
+
+    async updateMyCalendarColor(calId, color) {
+        if (!DB.supabase || !Auth.getUserId()) return;
+        try {
+            await DB.supabase.from("calendar_members")
+                .update({ color_override: color })
+                .eq("calendar_id", calId).eq("user_id", Auth.getUserId());
+            this._colorOverrides[calId] = color;
+            this.renderCalendarList();
+            if (typeof renderAll === "function") renderAll();
         } catch (e) { console.error(e); }
     },
 
@@ -302,6 +324,10 @@ const SharedCalendar = {
 
     getTaskCalendarColor(task) {
         if (!task.shared_calendar_id) return null;
+        // User's color override first, then calendar default
+        if (this._colorOverrides && this._colorOverrides[task.shared_calendar_id]) {
+            return this._colorOverrides[task.shared_calendar_id];
+        }
         const cal = this.calendars.find(c => c.id === task.shared_calendar_id);
         return cal ? cal.color : null;
     },
@@ -332,6 +358,8 @@ const SharedCalendar = {
         const aliases = JSON.parse(localStorage.getItem("my-tasks-cal-aliases") || "{}");
 
         for (const cal of this.calendars) {
+            const myRole = this.getMyRole(cal.id);
+            if (myRole === "pending") continue; // don't show pending calendars
             const enabled = this.enabledCalendarIds.includes(cal.id);
             const displayName = aliases[cal.id] || cal.name;
             const item = document.createElement("div");
@@ -341,8 +369,9 @@ const SharedCalendar = {
             cb.type = "checkbox"; cb.checked = enabled;
             cb.addEventListener("change", () => this.toggleCalendar(cal.id));
 
+            const myColor = (this._colorOverrides && this._colorOverrides[cal.id]) || cal.color;
             const dot = document.createElement("span");
-            dot.className = "sc-dot"; dot.style.background = cal.color;
+            dot.className = "sc-dot"; dot.style.background = myColor;
 
             const name = document.createElement("span");
             name.className = "sc-name"; name.textContent = displayName;
@@ -401,6 +430,31 @@ const SharedCalendar = {
             navigator.clipboard.writeText(link).then(() => showToast("Link copied!"));
         };
 
+        // My display color
+        const colorInput = document.getElementById("sm-my-color");
+        if (colorInput) {
+            const myColor = (this._colorOverrides && this._colorOverrides[calId]) || cal.color;
+            colorInput.value = myColor;
+            colorInput.onchange = () => {
+                this.updateMyCalendarColor(calId, colorInput.value);
+            };
+        }
+
+        // Public toggle: only owner can change
+        const publicToggle = document.getElementById("sm-public-toggle");
+        if (publicToggle) {
+            publicToggle.style.display = isOwner ? "block" : "none";
+            const cb = document.getElementById("sm-public-check");
+            if (cb) {
+                cb.checked = !!cal.is_public;
+                cb.onchange = async () => {
+                    await DB.supabase.from("shared_calendars")
+                        .update({ is_public: cb.checked }).eq("id", calId);
+                    showToast(cb.checked ? "Calendar is now public" : "Calendar is now private");
+                };
+            }
+        }
+
         // Danger zone: only owner can delete
         const dangerZone = document.getElementById("sm-danger-zone");
         dangerZone.style.display = isOwner ? "" : "none";
@@ -435,17 +489,19 @@ const SharedCalendar = {
             const row = document.createElement("div");
             row.className = "sm-member-row";
 
-            // Avatar
+            // Avatar with fallback
+            const avatarEl = document.createElement("div");
+            avatarEl.className = "sm-member-avatar";
+            avatarEl.textContent = displayName.charAt(0).toUpperCase();
             if (profile.avatar_url) {
                 const img = document.createElement("img");
-                img.className = "sm-member-avatar"; img.src = profile.avatar_url; img.alt = "";
-                row.appendChild(img);
-            } else {
-                const placeholder = document.createElement("div");
-                placeholder.className = "sm-member-avatar";
-                placeholder.textContent = displayName.charAt(0).toUpperCase();
-                row.appendChild(placeholder);
+                img.src = profile.avatar_url; img.alt = "";
+                img.style.cssText = "width:100%;height:100%;border-radius:50%;object-fit:cover;";
+                img.onerror = () => { img.remove(); }; // fallback to initial letter
+                avatarEl.textContent = "";
+                avatarEl.appendChild(img);
             }
+            row.appendChild(avatarEl);
 
             // Name + email
             const info = document.createElement("div");
@@ -454,36 +510,81 @@ const SharedCalendar = {
                 (email && !isMe ? `<div class="sm-member-email">${email}</div>` : "");
             row.appendChild(info);
 
-            // Role: owner sees dropdown to change role, others see badge
+            // Role: owner sees controls, others see badge
             if (isOwner && !isMe && m.role !== "owner") {
-                const roleSelect = document.createElement("select");
-                roleSelect.className = "sm-role-select";
-                for (const r of ["editor", "viewer"]) {
-                    const o = document.createElement("option");
-                    o.value = r; o.textContent = r;
-                    if (r === m.role) o.selected = true;
-                    roleSelect.appendChild(o);
-                }
-                roleSelect.addEventListener("change", async () => {
-                    await this.updateMemberRole(calId, m.user_id, roleSelect.value);
-                    this.showMembersModal(calId); // refresh
-                });
-                row.appendChild(roleSelect);
+                if (m.role === "pending") {
+                    // Pending request — show what they requested + approve/reject
+                    const wantedRole = m.requested_role || "viewer";
+                    const badge = document.createElement("span");
+                    badge.className = "sm-member-role-badge pending";
+                    badge.textContent = "wants " + wantedRole;
+                    row.appendChild(badge);
 
-                const removeBtn = document.createElement("button");
-                removeBtn.className = "sm-remove-btn"; removeBtn.textContent = "Remove";
-                removeBtn.addEventListener("click", async () => {
-                    if (confirm(`Remove ${displayName} from this calendar?`)) {
-                        await this.removeMember(calId, m.user_id);
-                        this.showMembersModal(calId);
+                    const roleSelect = document.createElement("select");
+                    roleSelect.className = "sm-role-select";
+                    for (const r of ["editor", "viewer"]) {
+                        const o = document.createElement("option"); o.value = r; o.textContent = r;
+                        if (r === wantedRole) o.selected = true;
+                        roleSelect.appendChild(o);
                     }
-                });
-                row.appendChild(removeBtn);
+                    row.appendChild(roleSelect);
+
+                    const approveBtn = document.createElement("button");
+                    approveBtn.className = "sm-approve-btn"; approveBtn.textContent = "Approve";
+                    approveBtn.addEventListener("click", async () => {
+                        await this.updateMemberRole(calId, m.user_id, roleSelect.value);
+                        showToast(displayName + " approved as " + roleSelect.value);
+                    });
+                    row.appendChild(approveBtn);
+
+                    const rejectBtn = document.createElement("button");
+                    rejectBtn.className = "sm-remove-btn"; rejectBtn.textContent = "Reject";
+                    rejectBtn.addEventListener("click", async () => {
+                        await this.removeMember(calId, m.user_id);
+                        showToast(displayName + " rejected");
+                    });
+                    row.appendChild(rejectBtn);
+                } else {
+                    const roleSelect = document.createElement("select");
+                    roleSelect.className = "sm-role-select";
+                    for (const r of ["editor", "viewer"]) {
+                        const o = document.createElement("option");
+                        o.value = r; o.textContent = r;
+                        if (r === m.role) o.selected = true;
+                        roleSelect.appendChild(o);
+                    }
+                    roleSelect.addEventListener("change", async () => {
+                        await this.updateMemberRole(calId, m.user_id, roleSelect.value);
+                        this.showMembersModal(calId);
+                    });
+                    row.appendChild(roleSelect);
+
+                    const removeBtn = document.createElement("button");
+                    removeBtn.className = "sm-remove-btn"; removeBtn.textContent = "Remove";
+                    removeBtn.addEventListener("click", async () => {
+                        if (confirm(`Remove ${displayName} from this calendar?`)) {
+                            await this.removeMember(calId, m.user_id);
+                            this.showMembersModal(calId);
+                        }
+                    });
+                    row.appendChild(removeBtn);
+                }
             } else {
                 const badge = document.createElement("span");
                 badge.className = "sm-member-role-badge " + m.role;
                 badge.textContent = m.role;
                 row.appendChild(badge);
+                // Non-owner viewer can request upgrade to editor
+                if (isMe && m.role === "viewer") {
+                    const upgradeBtn = document.createElement("button");
+                    upgradeBtn.className = "discover-req-btn";
+                    upgradeBtn.textContent = "Request Editor";
+                    upgradeBtn.addEventListener("click", async () => {
+                        await this.requestAccess(calId, "editor");
+                        this.showMembersModal(calId);
+                    });
+                    row.appendChild(upgradeBtn);
+                }
             }
 
             list.appendChild(row);
@@ -500,12 +601,29 @@ const SharedCalendar = {
     _subscription: null,
 
     subscribeToChanges() {
-        if (!DB.supabase || !this.enabledCalendarIds.length) return;
+        if (!DB.supabase) return;
         this.unsubscribe(); // clean up previous
 
-        // No filter — DELETE events don't carry old row data for filtered subscriptions
         this._subscription = DB.supabase
-            .channel("shared-tasks-changes")
+            .channel("shared-changes")
+            // calendar_members changes (approve/reject/join)
+            .on("postgres_changes", {
+                event: "*",
+                schema: "public",
+                table: "calendar_members",
+            }, () => {
+                this.loadCalendars().then(() => {
+                    this.loadSharedTasks().then(() => {
+                        this.renderCalendarList();
+                        const discoverList = document.getElementById("discover-calendar-list");
+                        if (discoverList) discoverList.style.display = "none";
+                        // Refresh members modal if open
+                        if (this._currentCalId) this.showMembersModal(this._currentCalId);
+                        if (typeof renderAll === "function") renderAll();
+                    });
+                });
+            })
+            // task changes
             .on("postgres_changes", {
                 event: "*",
                 schema: "public",
@@ -533,6 +651,56 @@ const SharedCalendar = {
             DB.supabase.removeChannel(this._subscription);
             this._subscription = null;
         }
+    },
+
+    // --- Discover public calendars ---
+    async loadPublicCalendars() {
+        if (!DB.supabase) return [];
+        try {
+            const { data } = await DB.supabase
+                .from("shared_calendars").select("id, name, description, color, owner_id")
+                .eq("is_public", true);
+            if (!data) return [];
+            // Filter out calendars I'm already a member of (including pending)
+            const myCalIds = new Set(this.calendars.map(c => c.id));
+            const { data: myMemberships } = await DB.supabase
+                .from("calendar_members").select("calendar_id")
+                .eq("user_id", Auth.getUserId());
+            if (myMemberships) myMemberships.forEach(m => myCalIds.add(m.calendar_id));
+            return data.filter(c => !myCalIds.has(c.id));
+        } catch (e) { console.error(e); return []; }
+    },
+
+    async requestAccess(calId, requestedRole) {
+        if (!DB.supabase || !Auth.getUserId()) return;
+        try {
+            // Check if already requested
+            const { data: existing } = await DB.supabase
+                .from("calendar_members").select("id, role")
+                .eq("calendar_id", calId).eq("user_id", Auth.getUserId()).maybeSingle();
+            if (existing) {
+                if (existing.role === "pending") {
+                    showToast("Already requested");
+                } else {
+                    // Already a member — request role upgrade
+                    if (requestedRole === "editor" && existing.role === "viewer") {
+                        await DB.supabase.from("calendar_members")
+                            .update({ role: "pending", requested_role: "editor" })
+                            .eq("calendar_id", calId).eq("user_id", Auth.getUserId());
+                        showToast("Upgrade to editor requested!");
+                    } else {
+                        showToast("Already a member (" + existing.role + ")");
+                    }
+                }
+                return;
+            }
+
+            await DB.supabase.from("calendar_members").insert({
+                calendar_id: calId, user_id: Auth.getUserId(), role: "pending",
+                requested_role: requestedRole || "viewer",
+            });
+            showToast("Access requested as " + (requestedRole || "viewer") + "! Waiting for approval.");
+        } catch (e) { console.error(e); showToast("Request failed"); }
     },
 
     // --- Profile cache for creator names ---

@@ -124,6 +124,11 @@ EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
 DO $$ BEGIN
+    CREATE POLICY "Anyone view public calendars" ON shared_calendars FOR SELECT USING (is_public = true);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
     CREATE POLICY "Anyone can find calendar by invite token" ON shared_calendars FOR SELECT USING (invite_link_token IS NOT NULL);
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
@@ -142,7 +147,9 @@ CREATE TABLE IF NOT EXISTS calendar_members (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     calendar_id UUID REFERENCES shared_calendars(id) ON DELETE CASCADE,
     user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
-    role TEXT NOT NULL DEFAULT 'viewer' CHECK (role IN ('owner', 'editor', 'viewer')),
+    role TEXT NOT NULL DEFAULT 'viewer' CHECK (role IN ('owner', 'editor', 'viewer', 'pending')),
+    color_override TEXT,
+    requested_role TEXT,
     joined_at TIMESTAMPTZ DEFAULT NOW(),
     UNIQUE(calendar_id, user_id)
 );

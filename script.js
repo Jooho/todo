@@ -2031,6 +2031,58 @@ curl -X POST ${API_BASE} \\
         if (typeof SharedCalendar !== "undefined") SharedCalendar.showCreateModal();
     });
 
+    // Discover public calendars
+    document.getElementById("discover-calendars-btn").addEventListener("click", async () => {
+        if (typeof SharedCalendar === "undefined") return;
+        const listEl = document.getElementById("discover-calendar-list");
+        const isOpen = listEl.style.display !== "none";
+        if (isOpen) { listEl.style.display = "none"; return; }
+
+        listEl.style.display = "";
+        listEl.innerHTML = '<div style="font-size:0.8rem;color:var(--text-faint);padding:6px;">Loading...</div>';
+        const cals = await SharedCalendar.loadPublicCalendars();
+        listEl.innerHTML = "";
+
+        if (!cals.length) {
+            listEl.innerHTML = '<div style="font-size:0.8rem;color:var(--text-faint);padding:6px;">No public calendars found</div>';
+            return;
+        }
+
+        for (const cal of cals) {
+            const item = document.createElement("div");
+            item.className = "discover-item";
+            const dot = document.createElement("span");
+            dot.className = "sc-dot"; dot.style.background = cal.color;
+            const name = document.createElement("span");
+            name.className = "discover-name"; name.textContent = cal.name;
+            const desc = document.createElement("span");
+            desc.className = "discover-desc"; desc.textContent = cal.description || "";
+            const roleSelect = document.createElement("select");
+            roleSelect.className = "sm-role-select";
+            for (const r of ["editor", "viewer"]) {
+                const o = document.createElement("option"); o.value = r; o.textContent = r;
+                roleSelect.appendChild(o);
+            }
+            const reqBtn = document.createElement("button");
+            reqBtn.className = "discover-req-btn"; reqBtn.textContent = "Request";
+            reqBtn.addEventListener("click", async () => {
+                await SharedCalendar.requestAccess(cal.id, roleSelect.value);
+                reqBtn.textContent = "Requested";
+                reqBtn.disabled = true;
+                roleSelect.disabled = true;
+            });
+            item.appendChild(dot);
+            const info = document.createElement("div");
+            info.className = "discover-info";
+            info.appendChild(name);
+            if (cal.description) info.appendChild(desc);
+            item.appendChild(info);
+            item.appendChild(roleSelect);
+            item.appendChild(reqBtn);
+            listEl.appendChild(item);
+        }
+    });
+
     // Real-time duplicate name check while typing
     document.getElementById("sc-name").addEventListener("input", (e) => {
         const name = e.target.value.trim();
@@ -2050,7 +2102,8 @@ curl -X POST ${API_BASE} \\
         if (typeof SharedCalendar !== "undefined" && SharedCalendar.hasCalendarName(name)) {
             nameInput.focus(); nameInput.select(); return;
         }
-        await SharedCalendar.createCalendar(name, color, desc);
+        const isPublic = document.getElementById("sc-public").checked;
+        await SharedCalendar.createCalendar(name, color, desc, isPublic);
         SharedCalendar.hideCreateModal();
     });
     document.getElementById("sc-cancel-btn").addEventListener("click", () => {
