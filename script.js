@@ -119,30 +119,24 @@ function addTask(text, category, dueDate, dueTime, description, sharedCalendarId
         shared_calendar_id: sharedCalendarId || null,
     };
 
-    // Optimistic update: show immediately, then save to DB
-    if (!sharedCalendarId) {
-        tasks.push(task);
-    }
-    renderAll();
-    showToast("Task added");
-
     if (_useSupabase()) {
         const row = DB._taskToRow(task);
         if (sharedCalendarId) row.shared_calendar_id = sharedCalendarId;
         DB.supabase.from("tasks").insert(row).then(({ error }) => {
-            if (error) {
-                // Rollback optimistic update
-                tasks = tasks.filter(t => t.id !== task.id);
-                renderAll();
-                showToast("Save failed: " + error.message);
-                return;
-            }
+            if (error) { showToast("Save failed: " + error.message); return; }
+            showToast("Task added");
+            // Reload from DB to stay in sync
             if (sharedCalendarId && typeof SharedCalendar !== "undefined") {
                 SharedCalendar.loadSharedTasks().then(() => renderAll());
+            } else {
+                loadTasksFromSupabase();
             }
         });
     } else {
+        tasks.push(task);
         saveTasks();
+        renderAll();
+        showToast("Task added");
     }
 }
 
