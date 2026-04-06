@@ -2319,8 +2319,10 @@ curl -X POST ${API_BASE} \\
     // Theme
     document.getElementById("theme-toggle").addEventListener("click", toggleTheme);
 
-    // Voice summary button
+    // Voice summary buttons (sidebar + mobile)
     document.getElementById("voice-summary-btn").addEventListener("click", speakTodaySummary);
+    const mobileVoiceBtn = document.getElementById("mobile-voice-btn");
+    if (mobileVoiceBtn) mobileVoiceBtn.addEventListener("click", speakTodaySummary);
 
     // Reminder setting
     const reminderSel = document.getElementById("reminder-setting");

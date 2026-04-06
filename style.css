@@ -175,6 +175,9 @@ body.dark .toggle-thumb { transform: translateX(14px); }
     background: var(--surface2);
     border-radius: 8px;
     line-height: 1.4;
+}
+.quote-bar:empty { display: none; }
+.encourage-msg:empty { display: none;
     transition: background 0.3s, color 0.3s;
     min-height: 20px;
 }
@@ -454,12 +457,23 @@ kbd {
 .task-item.completed .task-text { text-decoration: line-through; color: var(--text-faint); }
 .task-time { font-size: 0.8rem; color: var(--text-faint); margin-top: 4px; }
 
-/* Mobile-only title */
-.mobile-title {
+/* Mobile-only header + title */
+.mobile-header {
     display: none;
-    text-align: center; font-size: 1.2rem; font-weight: 700;
-    color: var(--accent); margin: 4px 0 0; padding: 0;
+    align-items: center; justify-content: center; gap: 8px;
+    margin: 4px 0 0;
 }
+.mobile-title {
+    font-size: 1.2rem; font-weight: 700;
+    color: var(--accent); margin: 0; padding: 0;
+}
+.mobile-voice-btn {
+    background: none; border: 1px solid var(--border); border-radius: 50%;
+    width: 32px; height: 32px; font-size: 1rem; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--text-muted); transition: all 0.15s;
+}
+.mobile-voice-btn:hover { border-color: var(--accent); color: var(--accent); }
 .mobile-progress {
     display: none; /* shown only on mobile via media query */
     align-items: center; gap: 8px; padding: 4px 0;
@@ -1482,8 +1496,8 @@ body.dark .sm-member-role-badge.editor { background: #1e3a5f; color: #93c5fd; }
     /* Hide schedule on mobile (can set in detail panel) */
     .cal-select-wrapper { display: none; }
 
-    /* Mobile title + progress */
-    .mobile-title { display: block !important; }
+    /* Mobile header + progress */
+    .mobile-header { display: flex !important; }
     .mobile-progress { display: flex !important; }
 
     /* === Task items === */
