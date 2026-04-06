@@ -1,0 +1,404 @@
+<!-- Created: 2026-04-05 19:30 -->
+<!-- Updated: 2026-04-05 22:00 — Calendar view: month/week/day, popup CRUD, drag & drop -->
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Tasks</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- Login Page (shown by default) -->
+    <div class="login-page" id="login-page" style="display:flex">
+        <div class="login-card">
+            <h1 class="login-title">My Tasks</h1>
+            <p class="login-subtitle">Sign in to manage your tasks</p>
+            <button class="google-login-btn" id="google-login-btn">
+                <svg width="20" height="20" viewBox="0 0 48 48"><path fill="#4285F4" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#34A853" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#EA4335" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+                Sign in with Google
+            </button>
+            <p class="login-divider">or</p>
+            <button class="login-skip-btn" id="login-skip">Continue without sign in</button>
+        </div>
+    </div>
+
+    <!-- App (hidden until authenticated) -->
+    <div class="app" id="app-container" role="main" aria-label="Todo Manager" style="display:none">
+
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <h1><span id="app-title">My Tasks</span> <span class="remaining-badge" id="remaining-badge" aria-label="Remaining tasks">0</span></h1>
+                <div class="header-actions">
+                    <button class="theme-toggle" id="theme-toggle" title="Dark mode (Alt+D)" aria-label="Toggle dark mode">
+                        <span class="theme-icon" id="theme-icon">&#9790;</span>
+                        <span class="toggle-track"><span class="toggle-thumb"></span></span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- User info (shown when logged in) -->
+            <div class="user-info" id="user-info" style="display:none">
+                <img class="user-avatar" id="user-avatar" src="" alt="Avatar">
+                <span class="user-name" id="user-name"></span>
+                <button class="icon-btn" id="logout-btn" title="Sign out" aria-label="Sign out">&#8617;</button>
+            </div>
+
+            <div class="quote-bar" id="quote-bar" aria-label="Daily quote"></div>
+
+            <!-- Dashboard -->
+            <div class="dashboard" role="region" aria-label="Progress dashboard">
+                <div class="dashboard-label">Progress</div>
+                <div class="dashboard-main-row">
+                    <span class="stats-text" id="stats-text">0/0 completed (0%)</span>
+                    <span class="stats-today" id="stats-today">Today: 0</span>
+                </div>
+                <div class="progress-bar" role="progressbar" id="progress-bar-container">
+                    <div class="progress-fill" id="progress-fill"></div>
+                </div>
+                <div class="encourage-msg" id="encourage-msg" aria-live="polite"></div>
+            </div>
+
+            <div class="category-stats" id="dashboard-categories"></div>
+
+            <!-- View tabs -->
+            <div class="sidebar-section">
+                <div class="section-label">View</div>
+                <div class="view-tabs" id="view-tabs">
+                    <button class="view-tab active" data-view="list" aria-label="List view"><span class="vt-icon">&#128203;</span><span class="vt-label"> List</span></button>
+                    <button class="view-tab" data-view="calendar" aria-label="Calendar view"><span class="vt-icon">&#128197;</span><span class="vt-label"> Calendar</span></button>
+                    <button class="view-tab" data-view="archive" aria-label="Archive view"><span class="vt-icon">&#128230;</span><span class="vt-label"> Archive</span></button>
+                    <button class="view-tab" data-view="settings" aria-label="Settings"><span class="vt-icon">&#9881;</span><span class="vt-label"> Settings</span></button>
+                </div>
+            </div>
+
+            <!-- Filters -->
+            <div class="sidebar-section">
+                <div class="section-label">Filter</div>
+                <div class="filter-list" id="filter-list" role="group" aria-label="Category filters">
+                    <!-- Dynamically rendered from categories -->
+                </div>
+            </div>
+
+            <!-- Sort -->
+            <div class="sidebar-section">
+                <div class="section-label">Sort</div>
+                <select class="sort-select" id="sort-select" aria-label="Sort order">
+                    <option value="manual">Manual</option>
+                    <option value="newest">Newest first</option>
+                    <option value="oldest">Oldest first</option>
+                    <option value="category">By category</option>
+                    <option value="status">By status</option>
+                </select>
+            </div>
+
+            <!-- Shared Calendars -->
+            <div class="sidebar-section">
+                <div class="section-label">Calendars</div>
+                <div id="calendar-list"></div>
+                <button class="sc-add-btn" id="shared-cal-create">+ New calendar</button>
+            </div>
+
+            <!-- Shortcuts -->
+            <div class="shortcuts-hint">
+                <div class="section-label">Shortcuts</div>
+                <div class="shortcut-row"><kbd>Alt+N</kbd> New task</div>
+                <div class="shortcut-row"><kbd>Alt+D</kbd> Dark mode</div>
+                <div class="shortcut-row"><kbd>Alt+L/C</kbd> List/Calendar</div>
+                <div class="shortcut-row"><kbd>Alt+T</kbd> Today</div>
+                <div class="shortcut-row"><kbd>Dbl-click</kbd> Edit task</div>
+            </div>
+        </aside>
+
+        <!-- Sidebar collapse toggle (outside sidebar to avoid overflow clip) -->
+        <button class="sidebar-collapse-btn" id="sidebar-toggle-btn" title="Toggle sidebar (Alt+F)">
+            <svg class="collapse-icon" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3L5 8L10 13"/></svg>
+        </button>
+
+        <!-- Main content -->
+        <main class="main-content">
+            <!-- ===== List View ===== -->
+            <div id="list-view">
+                <div class="list-toolbar">
+                    <div class="toolbar-row">
+                        <input type="text" id="search-input" placeholder="Search..." class="search-input toolbar-search" aria-label="Search tasks">
+                        <input type="text" id="task-input" placeholder="Add a new task..." maxlength="200" autofocus aria-label="New task text" class="toolbar-task-input">
+                        <select id="category-select" aria-label="Category" title="Category"></select>
+                        <div class="cal-select-wrapper">
+                            <div class="cal-multi-select" id="cal-multi-select">
+                                <button type="button" class="cal-multi-btn" id="cal-multi-btn" title="Also add to shared calendars">+ Schedule</button>
+                                <div class="cal-multi-dropdown" id="cal-multi-dropdown" style="display:none">
+                                    <div class="cal-multi-hint">Also add to:</div>
+                                </div>
+                            </div>
+                            <select id="calendar-select" style="display:none"><option value="">Personal</option></select>
+                        </div>
+                        <input type="date" id="due-date-input" aria-label="Due date" title="Due date">
+                        <label class="allday-toggle" title="All day"><input type="checkbox" id="allday-check" checked> All day</label>
+                        <input type="time" id="due-time-input" aria-label="Due time" title="Due time" style="display:none">
+                        <div class="add-btn-group">
+                            <button id="add-btn" aria-label="Add task">Add</button>
+                            <button id="add-detail-btn" class="add-detail-toggle" aria-label="Add with details" title="Add with details">&#9662;</button>
+                        </div>
+                    </div>
+                </div>
+
+                <ul id="task-list" role="list" aria-label="Task list"></ul>
+                <button class="clear-completed-btn" id="clear-completed-btn" aria-label="Clear completed tasks">Clear completed</button>
+            </div>
+
+            <!-- ===== Calendar View ===== -->
+            <div id="calendar-view" style="display:none">
+                <div class="cal-header">
+                    <button class="cal-nav-btn" id="cal-prev" aria-label="Previous">&#9664;</button>
+                    <span class="cal-title" id="cal-title"></span>
+                    <button class="cal-nav-btn" id="cal-next" aria-label="Next">&#9654;</button>
+                    <div class="cal-mode-btns">
+                        <button class="cal-mode-btn active" data-mode="month">Month</button>
+                        <button class="cal-mode-btn" data-mode="week">Week</button>
+                        <button class="cal-mode-btn" data-mode="day">Day</button>
+                    </div>
+                    <button class="cal-today-btn" id="cal-today">Today</button>
+                </div>
+                <div class="cal-grid" id="cal-grid"></div>
+            </div>
+
+            <!-- ===== Archive View ===== -->
+            <div id="archive-view" style="display:none">
+                <div class="archive-header">
+                    <h2 class="view-title">Archive</h2>
+                    <input type="text" id="archive-search" class="search-input" placeholder="Search archive..." aria-label="Search archive">
+                    <button class="archive-export-btn" id="archive-export">Export JSON</button>
+                </div>
+                <div class="archive-stats" id="archive-stats"></div>
+                <ul id="archive-list" role="list" aria-label="Archived tasks"></ul>
+                <div class="empty-state" id="archive-empty" style="display:none">No archived tasks yet.</div>
+            </div>
+
+            <!-- ===== Settings View ===== -->
+            <div id="settings-view" style="display:none">
+                <h2 class="view-title">Settings</h2>
+
+                <section class="settings-section">
+                    <h3 class="settings-label">Default Calendar</h3>
+                    <p class="settings-hint">New tasks will be added to this calendar by default.</p>
+                    <select id="default-calendar-select" class="settings-input"></select>
+                </section>
+
+                <section class="settings-section">
+                    <h3 class="settings-label">Categories</h3>
+                    <div id="cat-list"></div>
+                    <div class="cat-add-form">
+                        <input type="text" id="cat-new-label" class="cat-input" placeholder="New category name" maxlength="30">
+                        <input type="color" id="cat-new-color" class="cat-color-input" value="#E67E22">
+                        <button class="cat-add-btn" id="cat-add-btn">Add</button>
+                    </div>
+                </section>
+
+                <section class="settings-section">
+                    <h3 class="settings-label">Database (Supabase)</h3>
+                    <input type="url" id="sb-url" class="settings-input" placeholder="Supabase URL (https://xxx.supabase.co)">
+                    <div class="input-with-toggle">
+                        <input type="password" id="sb-key" class="settings-input" placeholder="Anon Key">
+                        <button class="key-toggle" id="sb-key-toggle" type="button" aria-label="Toggle key visibility">&#128065;</button>
+                    </div>
+                    <div class="sb-status" id="sb-status">Not connected</div>
+                    <div class="settings-btn-row">
+                        <button class="settings-btn" id="sb-test">Test Connection</button>
+                        <button class="settings-btn" id="sb-sync">Sync Now</button>
+                    </div>
+                </section>
+
+                <section class="settings-section">
+                    <h3 class="settings-label">API Access</h3>
+                    <p class="settings-hint">Generate tokens to manage tasks from Claude Code or scripts.</p>
+
+                    <!-- New token alert (shown once after generation) -->
+                    <div id="api-token-new-alert" class="api-token-alert" style="display:none">
+                        <div class="api-token-alert-label">New token created — copy now, it won't be shown again!</div>
+                        <div class="api-token-row">
+                            <code class="api-token-value" id="api-token-new-value"></code>
+                            <button class="settings-btn small" id="api-token-copy-new">Copy</button>
+                        </div>
+                    </div>
+
+                    <!-- Token list -->
+                    <div id="api-token-list" class="api-token-list"></div>
+
+                    <!-- Create token form -->
+                    <div class="api-token-create-form">
+                        <input type="text" id="api-token-name" class="settings-input" placeholder="Token name (e.g. Claude, CI Script)" maxlength="40" style="margin-bottom:6px">
+                        <div class="api-token-create-row">
+                            <select id="api-token-expiry" class="settings-input" style="flex:1">
+                                <option value="1">1 hour</option>
+                                <option value="24">1 day</option>
+                                <option value="168">7 days</option>
+                                <option value="720" selected>30 days</option>
+                                <option value="2160">90 days</option>
+                                <option value="8760">1 year</option>
+                                <option value="">Never expires</option>
+                            </select>
+                            <button class="settings-btn" id="api-token-generate">Generate Token</button>
+                        </div>
+                    </div>
+
+                    <div class="api-docs-box" id="api-docs-box">
+                        <div class="settings-hint" style="margin-top:12px;font-weight:600;">API Usage</div>
+                        <pre class="api-docs-code" id="api-docs-code"></pre>
+                    </div>
+                </section>
+
+                <section class="settings-section">
+                    <h3 class="settings-label">Data</h3>
+                    <div class="settings-btn-row">
+                        <button class="settings-btn" id="data-export-all">Export All (JSON)</button>
+                        <button class="settings-btn" id="data-import-all">Import (JSON)</button>
+                        <input type="file" id="data-import-file" accept=".json" hidden>
+                    </div>
+                </section>
+            </div>
+
+            <!-- Task Detail Modal -->
+            <div class="detail-modal" id="detail-modal" style="display:none">
+                <div class="detail-header">
+                    <input type="text" id="detail-title" class="detail-title" placeholder="Task title..." maxlength="200">
+                    <button class="detail-close" id="detail-close" aria-label="Close">&times;</button>
+                </div>
+                <div class="detail-meta">
+                    <select id="detail-category" class="detail-field" aria-label="Category"></select>
+                    <input type="date" id="detail-date" class="detail-field" aria-label="Due date">
+                    <input type="time" id="detail-time" class="detail-field" aria-label="Due time">
+                </div>
+                <textarea id="detail-desc" class="detail-desc" placeholder="Add description, notes, links..." rows="6"></textarea>
+                <div class="detail-info">
+                    <span>Created: <span id="detail-created"></span></span>
+                    <span>Updated: <span id="detail-updated"></span></span>
+                </div>
+                <div class="detail-actions">
+                    <button class="detail-btn save" id="detail-save">Save</button>
+                    <button class="detail-btn archive-btn" id="detail-archive">Archive</button>
+                    <button class="detail-btn del" id="detail-delete">Delete</button>
+                </div>
+            </div>
+
+            <!-- Task popup (for calendar CRUD) -->
+            <div class="task-popup" id="task-popup" style="display:none">
+                <input type="text" class="popup-field popup-text" id="popup-text" placeholder="Task..." maxlength="200">
+                <div class="popup-row">
+                    <input type="date" class="popup-field" id="popup-date">
+                    <input type="time" class="popup-field" id="popup-time">
+                </div>
+                <select class="popup-field popup-cat" id="popup-cat">
+                    <option value="work">Work</option>
+                    <option value="personal">Personal</option>
+                    <option value="study">Study</option>
+                </select>
+                <div class="popup-actions">
+                    <button class="popup-btn popup-save" id="popup-save">Save</button>
+                    <button class="popup-btn popup-del" id="popup-delete" style="display:none">Delete</button>
+                    <button class="popup-btn popup-cancel" id="popup-cancel">Cancel</button>
+                </div>
+            </div>
+        </main>
+
+        <!-- Shared Calendar: Create Modal -->
+        <div class="shared-modal" id="shared-create-modal" style="display:none">
+            <h3>New Shared Calendar</h3>
+            <input type="text" id="sc-name" class="shared-field" placeholder="Calendar name" maxlength="50">
+            <div class="sc-name-warning" id="sc-name-warning" style="display:none">A calendar with this name already exists. Please choose a different name.</div>
+            <div class="shared-row">
+                <input type="color" id="sc-color" class="sc-color-input" value="#FF6B6B">
+                <input type="text" id="sc-desc" class="shared-field" placeholder="Description (optional)">
+            </div>
+            <div class="shared-actions">
+                <button class="shared-btn save" id="sc-create-btn">Create</button>
+                <button class="shared-btn cancel" id="sc-cancel-btn">Cancel</button>
+            </div>
+        </div>
+
+        <!-- Shared Calendar: Members Modal -->
+        <div class="shared-modal sm-modal" id="shared-members-modal" style="display:none">
+            <div class="sm-header">
+                <div class="sm-cal-info">
+                    <span class="sm-cal-dot" id="sm-cal-dot"></span>
+                    <div>
+                        <h3 id="sm-cal-name"></h3>
+                        <span class="sm-cal-desc" id="sm-cal-desc"></span>
+                    </div>
+                </div>
+                <button class="sm-close-x" id="sm-close-btn">&times;</button>
+            </div>
+
+            <div class="sm-section">
+                <div class="sm-section-label">Members</div>
+                <div id="sm-member-list"></div>
+            </div>
+
+            <div class="sm-section">
+                <div class="sm-section-label">Invite people</div>
+                <div class="sm-invite-link-box">
+                    <input type="text" class="sm-link-input" id="sm-link-display" readonly>
+                    <button class="shared-btn small" id="sm-copy-link">Copy</button>
+                </div>
+                <div class="sm-invite-hint">Share this link to invite people as viewers</div>
+            </div>
+
+            <div class="sm-section sm-danger-zone" id="sm-danger-zone">
+                <button class="shared-btn danger-sm" id="sm-delete-cal">Delete Calendar</button>
+            </div>
+        </div>
+
+        <!-- Detail side panel (desktop) -->
+        <aside class="detail-panel" id="detail-panel" style="display:none">
+            <div class="detail-panel-body">
+                <input type="text" id="dp-title" class="dp-field dp-title-input" placeholder="Title" maxlength="200">
+                <div class="dp-meta">
+                    <select id="dp-category" class="dp-field" aria-label="Category"></select>
+                    <select id="dp-calendar" class="dp-field" aria-label="Calendar"></select>
+                    <input type="date" id="dp-date" class="dp-field" aria-label="Due date">
+                    <label class="allday-toggle"><input type="checkbox" id="dp-allday"> All day</label>
+                    <input type="time" id="dp-time" class="dp-field" aria-label="Due time">
+                </div>
+                <textarea id="dp-desc" class="dp-textarea" placeholder="Add description, notes, links..." rows="6"></textarea>
+
+                <!-- Subtasks -->
+                <div class="dp-subtasks">
+                    <div class="dp-subtasks-label">Subtasks</div>
+                    <div id="dp-subtask-list"></div>
+                    <div class="dp-subtask-add">
+                        <input type="text" id="dp-subtask-input" class="dp-subtask-input" placeholder="Add subtask..." maxlength="100">
+                        <button class="dp-subtask-add-btn" id="dp-subtask-add-btn">+</button>
+                    </div>
+                </div>
+                <div class="dp-info">
+                    <div id="dp-creator-row" style="display:none"><span class="dp-info-label">Created by:</span> <span id="dp-creator"></span></div>
+                    <span>Created: <span id="dp-created"></span></span>
+                    <span>Updated: <span id="dp-updated"></span></span>
+                </div>
+            </div>
+            <div class="detail-panel-actions">
+                <button class="dp-btn save" id="dp-save" disabled>Save</button>
+                <button class="dp-btn close" id="dp-close">Close</button>
+                <button class="dp-btn archive" id="dp-archive">Archive</button>
+                <button class="dp-btn delete" id="dp-delete">Delete</button>
+            </div>
+        </aside>
+
+        <!-- Undo bar -->
+        <div class="undo-bar" id="undo-bar" role="alert">
+            <span id="undo-text">Task deleted</span>
+            <button class="undo-btn" id="undo-btn">Undo</button>
+        </div>
+
+        <!-- Toast -->
+        <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="db.js"></script>
+    <script src="detail-panel.js"></script>
+    <script src="auth.js"></script>
+    <script src="shared.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
