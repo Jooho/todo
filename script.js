@@ -102,7 +102,7 @@ async function loadTasksFromSupabase() {
     } catch (e) { console.error("Load tasks exception:", e); }
 }
 
-function addTask(text, category, dueDate, dueTime, description, sharedCalendarId) {
+function addTask(text, category, dueDate, dueTime, description, sharedCalendarId, recurrence, recurrenceParentId) {
     const trimmed = text.trim();
     if (!trimmed) return;
     const now = new Date().toISOString();
@@ -117,6 +117,8 @@ function addTask(text, category, dueDate, dueTime, description, sharedCalendarId
         dueDate: dueDate || formatDateKey(new Date()),
         dueTime: dueTime || null,
         shared_calendar_id: sharedCalendarId || null,
+        recurrence: recurrence || null,
+        recurrence_parent_id: recurrenceParentId || null,
     };
 
     if (_useSupabase()) {
@@ -158,20 +160,114 @@ function _reloadSharedTasks() {
 }
 
 function deleteTask(id) {
-    // Remove from local arrays immediately so UI updates instantly
-    tasks = tasks.filter(t => t.id !== id);
+    const found = _findTask(id);
+    const task = found ? found.task : null;
+
+    // If part of recurring series (parent or child), show options
+    if (task && (task.recurrence || task.recurrence_parent_id)) {
+        _showRecurringDeleteDialog(task);
+        return;
+    }
+
+    // Non-recurring: confirm then delete
+    if (confirm("Delete this task permanently?")) {
+        _doDeleteTasks([id]);
+    }
+}
+
+function _doDeleteTasks(ids) {
+    const idSet = new Set(ids);
+    tasks = tasks.filter(t => !idSet.has(t.id));
     if (typeof SharedCalendar !== "undefined") {
-        SharedCalendar._sharedTasks = SharedCalendar._sharedTasks.filter(t => t.id !== id);
+        SharedCalendar._sharedTasks = SharedCalendar._sharedTasks.filter(t => !idSet.has(t.id));
     }
     renderAll();
 
     if (_useSupabase()) {
-        DB.supabase.from("tasks").delete().eq("id", id).then(({ error }) => {
+        DB.supabase.from("tasks").delete().in("id", ids).then(({ error }) => {
             if (error) showToast("Delete failed: " + error.message);
         });
     } else {
         saveTasks();
     }
+}
+
+function _getRecurringSeries(task) {
+    const all = getAllTasks();
+    const parentId = task.recurrence ? task.id : task.recurrence_parent_id;
+
+    // First try: match by recurrence_parent_id
+    if (parentId) {
+        const byId = all.filter(t => t.id === parentId || t.recurrence_parent_id === parentId);
+        if (byId.length > 1) return byId;
+    }
+
+    // Fallback: match by text + shared_calendar_id (for legacy tasks without parent_id)
+    return all.filter(t =>
+        t.text === task.text &&
+        (t.shared_calendar_id || "") === (task.shared_calendar_id || "") &&
+        (t.recurrence || t.recurrence_parent_id || (t.dueDate && task.recurrence))
+    );
+}
+
+function _showRecurringDeleteDialog(task) {
+    const existing = document.getElementById("rec-delete-overlay");
+    if (existing) existing.remove();
+
+    const series = _getRecurringSeries(task);
+    const taskDate = task.dueDate || "";
+    const futureInSeries = series.filter(t => (t.dueDate || "") >= taskDate && t.id !== task.id);
+    const pastInSeries = series.filter(t => (t.dueDate || "") < taskDate);
+
+    const overlay = document.createElement("div");
+    overlay.id = "rec-delete-overlay";
+    overlay.className = "popup-overlay";
+    overlay.style.cssText = "display:flex;align-items:center;justify-content:center;z-index:200;";
+
+    const dialog = document.createElement("div");
+    dialog.style.cssText = "background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;max-width:360px;width:90%;box-shadow:0 8px 30px rgba(0,0,0,0.3);";
+
+    const title = document.createElement("h3");
+    title.style.cssText = "font-size:1rem;color:var(--text);margin:0 0 12px;";
+    title.textContent = "Delete recurring task";
+
+    const hint = document.createElement("div");
+    hint.style.cssText = "font-size:0.82rem;color:var(--text-faint);margin-bottom:16px;";
+    hint.textContent = `"${task.text}" — ${series.length} tasks in series`;
+
+    dialog.appendChild(title);
+    dialog.appendChild(hint);
+
+    const options = [
+        { label: "This task only", desc: "Delete just this one", ids: [task.id] },
+        { label: "This and all future", desc: `Delete this + ${futureInSeries.length} future`, ids: [task.id, ...futureInSeries.map(t => t.id)] },
+        { label: "All in series", desc: `Delete all ${series.length} tasks`, ids: series.map(t => t.id) },
+    ];
+
+    for (const opt of options) {
+        const btn = document.createElement("button");
+        btn.style.cssText = "display:block;width:100%;padding:10px 14px;margin-bottom:6px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text2);font-size:0.85rem;cursor:pointer;text-align:left;";
+        btn.innerHTML = `<strong>${opt.label}</strong><br><span style="font-size:0.75rem;color:var(--text-faint);">${opt.desc}</span>`;
+        btn.addEventListener("mouseenter", () => { btn.style.borderColor = "var(--danger)"; btn.style.color = "var(--danger)"; });
+        btn.addEventListener("mouseleave", () => { btn.style.borderColor = "var(--border)"; btn.style.color = "var(--text2)"; });
+        btn.addEventListener("click", () => {
+            _doDeleteTasks(opt.ids);
+            overlay.remove();
+            showToast(`${opt.ids.length} task(s) deleted`);
+            if (typeof DetailPanel !== "undefined") DetailPanel.close();
+        });
+        dialog.appendChild(btn);
+    }
+
+    const cancelBtn = document.createElement("button");
+    cancelBtn.style.cssText = "display:block;width:100%;padding:10px;border:none;border-radius:8px;background:var(--surface3);color:var(--text-muted);font-size:0.85rem;cursor:pointer;margin-top:4px;";
+    cancelBtn.textContent = "Cancel";
+    cancelBtn.addEventListener("click", () => overlay.remove());
+    dialog.appendChild(cancelBtn);
+
+    overlay.appendChild(dialog);
+    overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
+    document.body.appendChild(overlay);
 }
 
 function toggleTask(id) {
@@ -185,12 +281,104 @@ function toggleTask(id) {
             completed: t.completed, updated_at: new Date().toISOString()
         }).eq("id", id).then(({ error }) => {
             if (error) showToast("Update failed: " + error.message);
+            // Recurring task: no auto-create on complete (batch created on save)
             if (found.isShared) _reloadSharedTasks();
             else renderAll();
         });
     } else {
         saveTasks();
         renderAll();
+    }
+}
+
+function _getNextDate(dateStr, recurrence) {
+    const d = new Date(dateStr + "T00:00:00");
+    const interval = recurrence.interval || 1;
+    switch (recurrence.type) {
+        case "daily": d.setDate(d.getDate() + interval); break;
+        case "weekly": d.setDate(d.getDate() + 7 * interval); break;
+        case "monthly": d.setMonth(d.getMonth() + interval); break;
+        case "yearly": d.setFullYear(d.getFullYear() + interval); break;
+    }
+    return formatDateKey(d);
+}
+
+// Default: generate up to 3 months ahead when no end date
+const RECURRENCE_MAX_MONTHS = 3;
+
+function _generateRecurringTasks(task) {
+    if (!task.recurrence) return;
+    const rec = task.recurrence;
+    const startDate = rec.startDate || task.dueDate || formatDateKey(new Date());
+    // End date: use explicit endDate or default 3 months from start
+    const maxDate = rec.endDate || (() => {
+        const d = new Date(startDate + "T00:00:00");
+        d.setMonth(d.getMonth() + RECURRENCE_MAX_MONTHS);
+        return formatDateKey(d);
+    })();
+
+    let count = 0;
+    let currentDate = startDate;
+
+    // Check existing tasks to avoid duplicates
+    const allTasks = getAllTasks();
+    const existingDates = new Set(
+        allTasks.filter(t => t.text === task.text && t.shared_calendar_id === task.shared_calendar_id)
+            .map(t => t.dueDate)
+    );
+
+    const tasksToCreate = [];
+    for (let i = 0; i < 365; i++) { // safety cap
+        const nextDate = i === 0 ? currentDate : _getNextDate(currentDate, rec);
+        currentDate = nextDate;
+
+        if (nextDate > maxDate) break;
+        if (existingDates.has(nextDate)) continue;
+
+        tasksToCreate.push(nextDate);
+        count++;
+    }
+
+    for (const date of tasksToCreate) {
+        // Child tasks: no recurrence, linked to parent via recurrence_parent_id
+        addTask(task.text, task.category, date, task.dueTime, task.description, task.shared_calendar_id || "", null, task.id);
+    }
+
+    if (count > 0) showToast(`${count} ${rec.type} tasks created`);
+}
+
+function _handleRecurrenceChange(task, newRecurrence, oldRecurrence) {
+    const oldRec = oldRecurrence || null;
+    const oldType = oldRec ? oldRec.type : null;
+    const newType = newRecurrence ? newRecurrence.type : null;
+
+    // No change at all
+    if (oldType === newType && JSON.stringify(oldRec) === JSON.stringify(newRecurrence)) return;
+
+    const today = formatDateKey(new Date());
+
+    // If had old recurrence, delete future tasks in old series
+    if (oldRec) {
+        // Temporarily set old recurrence to find old series
+        const savedRec = task.recurrence;
+        task.recurrence = oldRec;
+        const series = _getRecurringSeries(task);
+        task.recurrence = savedRec;
+        const futureIds = series
+            .filter(t => t.id !== task.id && (t.dueDate || "") >= today)
+            .map(t => t.id);
+        if (futureIds.length > 0) {
+            _doDeleteTasks(futureIds);
+            showToast(`${futureIds.length} old recurring tasks removed`);
+        }
+    }
+
+    // If new recurrence set, apply to task then generate new series
+    if (newRecurrence) {
+        task.recurrence = newRecurrence;
+        setTimeout(() => {
+            _generateRecurringTasks(task);
+        }, 500);
     }
 }
 
@@ -204,6 +392,7 @@ function updateTask(id, data) {
     if (data.dueTime !== undefined) t.dueTime = data.dueTime || null;
     if (data.description !== undefined) t.description = data.description;
     if (data.subtasks !== undefined) t.subtasks = data.subtasks;
+    if (data.recurrence !== undefined) t.recurrence = data.recurrence;
     t.updatedAt = new Date().toISOString();
 
     if (_useSupabase()) {
@@ -567,7 +756,8 @@ function createTaskElement(task) {
         dueSpan.className = "task-due" + (isDueSoon(task) ? " due-soon" : "");
         const d = new Date(task.dueDate + "T00:00:00");
         const dateStr = d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric", weekday: "short" });
-        dueSpan.textContent = dateStr + (task.dueTime ? " " + task.dueTime : "");
+        const recLabel = task.recurrence ? " \u{1F501} " + task.recurrence.type : (task.recurrence_parent_id ? " \u{1F501}" : "");
+        dueSpan.textContent = dateStr + (task.dueTime ? " " + task.dueTime : "") + recLabel;
         content.appendChild(dueSpan);
     }
 

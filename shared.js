@@ -307,15 +307,7 @@ const SharedCalendar = {
                 .from("tasks").select("*")
                 .in("shared_calendar_id", this.enabledCalendarIds)
                 .eq("archived", false);
-            this._sharedTasks = (data || []).map(row => ({
-                id: row.id, text: row.text, description: row.description || "",
-                category: row.category, completed: row.completed,
-                dueDate: row.due_date, dueTime: row.due_time,
-                createdAt: row.created_at, updatedAt: row.updated_at,
-                shared_calendar_id: row.shared_calendar_id,
-                user_id: row.user_id,
-                subtasks: row.subtasks || [],
-            }));
+            this._sharedTasks = (data || []).map(row => DB._rowToTask(row));
             // Load profiles for creator display
             const userIds = [...new Set(this._sharedTasks.map(t => t.user_id).filter(Boolean))];
             await this.loadProfiles(userIds);

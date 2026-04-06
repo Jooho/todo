@@ -42,6 +42,9 @@ const DetailPanel = {
             date: document.getElementById("dp-date").value,
             time: document.getElementById("dp-time").value,
             allday: document.getElementById("dp-allday").checked,
+            recurrence: document.getElementById("dp-recurrence") ? document.getElementById("dp-recurrence").value : "",
+            recStart: document.getElementById("dp-rec-start") ? document.getElementById("dp-rec-start").value : "",
+            recEnd: document.getElementById("dp-rec-end") ? document.getElementById("dp-rec-end").value : "",
         };
     },
 
@@ -54,7 +57,10 @@ const DetailPanel = {
             document.getElementById("dp-category").value !== s.cat ||
             document.getElementById("dp-date").value !== s.date ||
             document.getElementById("dp-time").value !== s.time ||
-            document.getElementById("dp-allday").checked !== s.allday
+            document.getElementById("dp-allday").checked !== s.allday ||
+            (document.getElementById("dp-recurrence") ? document.getElementById("dp-recurrence").value : "") !== s.recurrence ||
+            (document.getElementById("dp-rec-start") ? document.getElementById("dp-rec-start").value : "") !== s.recStart ||
+            (document.getElementById("dp-rec-end") ? document.getElementById("dp-rec-end").value : "") !== s.recEnd
         );
     },
 
@@ -78,6 +84,36 @@ const DetailPanel = {
         document.getElementById("dp-time").style.display = isAllDay ? "none" : "";
         document.getElementById("dp-created").textContent = task.createdAt ? new Date(task.createdAt).toLocaleString() : "-";
         document.getElementById("dp-updated").textContent = task.updatedAt ? new Date(task.updatedAt).toLocaleString() : "-";
+
+        // Recurrence
+        const recSel = document.getElementById("dp-recurrence");
+        const recStart = document.getElementById("dp-rec-start");
+        const recEnd = document.getElementById("dp-rec-end");
+        const isChild = !task.recurrence && task.recurrence_parent_id;
+        if (recSel) {
+            if (isChild) {
+                // Child of recurring series — show as read-only
+                recSel.value = "";
+                recSel.disabled = true;
+                recSel.title = "Edit recurrence from the original task";
+            } else {
+                recSel.value = (task.recurrence && task.recurrence.type) || "";
+                recSel.disabled = !canEdit;
+                recSel.title = "";
+            }
+            const hasRec = !!recSel.value;
+            document.getElementById("dp-date").style.display = hasRec ? "none" : "";
+            if (recStart) {
+                recStart.style.display = hasRec ? "" : "none";
+                recStart.value = (task.recurrence && task.recurrence.startDate) || task.dueDate || "";
+                recStart.disabled = !canEdit || isChild;
+            }
+            if (recEnd) {
+                recEnd.style.display = hasRec ? "" : "none";
+                recEnd.value = (task.recurrence && task.recurrence.endDate) || "";
+                recEnd.disabled = !canEdit || isChild;
+            }
+        }
 
         // Show creator for shared tasks
         const creatorEl = document.getElementById("dp-creator-row");
@@ -148,16 +184,34 @@ const DetailPanel = {
 
     save() {
         if (!this._taskId) return;
+        const recType = document.getElementById("dp-recurrence") ? document.getElementById("dp-recurrence").value : "";
+        const recStartDate = document.getElementById("dp-rec-start") ? document.getElementById("dp-rec-start").value : "";
+        const recEndDate = document.getElementById("dp-rec-end") ? document.getElementById("dp-rec-end").value : "";
         const data = {
             text: document.getElementById("dp-title").value,
             description: document.getElementById("dp-desc").value,
             category: document.getElementById("dp-category").value,
             dueDate: document.getElementById("dp-date").value,
             dueTime: document.getElementById("dp-allday").checked ? "" : document.getElementById("dp-time").value,
+            recurrence: recType ? {
+                type: recType,
+                interval: 1,
+                startDate: recStartDate || null,
+                endDate: recEndDate || null,
+            } : null,
         };
+
+        // Capture old recurrence BEFORE updateTask changes it
+        const foundBefore = typeof _findTask === "function" ? _findTask(this._taskId) : null;
+        const oldRecurrence = foundBefore && foundBefore.task.recurrence ? { ...foundBefore.task.recurrence } : null;
 
         // Update the task itself
         if (typeof updateTask === "function") updateTask(this._taskId, data);
+
+        // Recurrence changed: delete future tasks from old series, generate new
+        if (typeof _handleRecurrenceChange === "function" && foundBefore) {
+            _handleRecurrenceChange(foundBefore.task, data.recurrence, oldRecurrence);
+        }
 
         // Update shared_calendar_id if changed
         const calList = document.getElementById("dp-calendar-list");
@@ -189,10 +243,16 @@ const DetailPanel = {
 
     deleteCurrent() {
         if (!this._taskId) return;
-        if (confirm("Delete this task permanently?")) {
-            if (typeof deleteTask === "function") deleteTask(this._taskId);
-            this.close();
+        const id = this._taskId;
+        const found = typeof _findTask === "function" ? _findTask(id) : null;
+        // If recurring, show dialog (don't close panel yet)
+        if (found && found.task && found.task.recurrence) {
+            if (typeof deleteTask === "function") deleteTask(id);
+            return; // dialog will handle close
         }
+        // Non-recurring
+        if (typeof deleteTask === "function") deleteTask(id);
+        this.close();
     },
 
     // --- Subtask management ---
@@ -267,6 +327,29 @@ const DetailPanel = {
             document.getElementById(id).addEventListener("input", () => this._updateSaveBtn());
         }
         document.getElementById("dp-category").addEventListener("change", () => this._updateSaveBtn());
+        if (document.getElementById("dp-recurrence")) {
+            document.getElementById("dp-recurrence").addEventListener("change", () => {
+                this._updateSaveBtn();
+                const hasRec = !!document.getElementById("dp-recurrence").value;
+                // Toggle dueDate vs start/end
+                document.getElementById("dp-date").style.display = hasRec ? "none" : "";
+                const recStart = document.getElementById("dp-rec-start");
+                const recEnd = document.getElementById("dp-rec-end");
+                if (recStart) {
+                    recStart.style.display = hasRec ? "" : "none";
+                    if (hasRec && !recStart.value) {
+                        const today = new Date();
+                        recStart.value = today.getFullYear() + "-" + String(today.getMonth()+1).padStart(2,"0") + "-" + String(today.getDate()).padStart(2,"0");
+                    }
+                }
+                if (recEnd) recEnd.style.display = hasRec ? "" : "none";
+                this._updateSaveBtn();
+            });
+            if (document.getElementById("dp-rec-start"))
+                document.getElementById("dp-rec-start").addEventListener("change", () => this._updateSaveBtn());
+            if (document.getElementById("dp-rec-end"))
+                document.getElementById("dp-rec-end").addEventListener("change", () => this._updateSaveBtn());
+        }
 
         // Subtask add
         document.getElementById("dp-subtask-add-btn").addEventListener("click", () => {

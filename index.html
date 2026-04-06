@@ -399,6 +399,15 @@
                     <input type="date" id="dp-date" class="dp-field" aria-label="Due date">
                     <label class="allday-toggle"><input type="checkbox" id="dp-allday"> All day</label>
                     <input type="time" id="dp-time" class="dp-field" aria-label="Due time">
+                    <select id="dp-recurrence" class="dp-field" aria-label="Repeat">
+                        <option value="">No repeat</option>
+                        <option value="daily">Daily</option>
+                        <option value="weekly">Weekly</option>
+                        <option value="monthly">Monthly</option>
+                        <option value="yearly">Yearly</option>
+                    </select>
+                    <input type="date" id="dp-rec-start" class="dp-field" aria-label="Repeat start date" title="Repeat starts from" style="display:none">
+                    <input type="date" id="dp-rec-end" class="dp-field" aria-label="Repeat end date" title="Repeat until (optional)" style="display:none">
                 </div>
                 <textarea id="dp-desc" class="dp-textarea" placeholder="Add description, notes, links..." rows="6"></textarea>
 

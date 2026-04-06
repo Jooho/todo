@@ -21,6 +21,8 @@ CREATE TABLE IF NOT EXISTS tasks (
     due_date DATE,
     due_time TIME,
     subtasks JSONB DEFAULT '[]',
+    recurrence JSONB,              -- {type:"daily"|"weekly"|"monthly", interval:1, endDate:null}
+    recurrence_parent_id UUID,     -- links to original recurring task
     shared_calendar_id UUID,
     user_id UUID REFERENCES auth.users(id),
     created_at TIMESTAMPTZ DEFAULT NOW(),

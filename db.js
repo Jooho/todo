@@ -145,6 +145,8 @@ const DB = {
             updated_at: task.updatedAt || task.createdAt,
             user_id: (typeof Auth !== "undefined" && Auth.getUserId()) ? Auth.getUserId() : null,
             subtasks: task.subtasks || [],
+            recurrence: task.recurrence || null,
+            recurrence_parent_id: task.recurrence_parent_id || null,
         };
     },
 
@@ -162,7 +164,10 @@ const DB = {
             createdAt: row.created_at,
             updatedAt: row.updated_at || row.created_at,
             subtasks: subtasks,
+            user_id: row.user_id || null,
             shared_calendar_id: row.shared_calendar_id || null,
+            recurrence: typeof row.recurrence === "string" ? JSON.parse(row.recurrence) : (row.recurrence || null),
+            recurrence_parent_id: row.recurrence_parent_id || null,
         };
     },
 };
