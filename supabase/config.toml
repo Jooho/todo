@@ -402,6 +402,11 @@ s3_secret_key = "env(S3_SECRET_KEY)"
 # JSON string passed through to pg-delta SQL formatting.
 # format_options = "{\"keywordCase\":\"upper\",\"indent\":2,\"maxWidth\":80,\"commaStyle\":\"trailing\"}"
 
+[functions.send-notification]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/send-notification/index.ts"
+
 [functions.api-proxy]
 enabled = true
 verify_jwt = true

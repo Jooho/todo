@@ -1106,6 +1106,8 @@ body.sidebar-collapsed .main-content { margin-left: 60px; }
 }
 .discover-req-btn:hover { background: var(--accent); color: #fff; }
 .discover-req-btn:disabled { opacity: 0.5; cursor: default; background: var(--surface3); border-color: var(--border); color: var(--text-faint); }
+.discover-req-btn.cancel { border-color: var(--danger); color: var(--danger); }
+.discover-req-btn.cancel:hover { background: var(--danger); color: #fff; }
 
 /* Pending badge + approve button */
 .sm-member-role-badge.pending { background: #F39C1218; color: #F39C12; }

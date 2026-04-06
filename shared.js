@@ -653,13 +653,22 @@ const SharedCalendar = {
                 .from("shared_calendars").select("id, name, description, color, owner_id")
                 .eq("is_public", true);
             if (!data) return [];
-            // Filter out calendars I'm already a member of (including pending)
-            const myCalIds = new Set(this.calendars.map(c => c.id));
+            // Get my memberships to mark status
             const { data: myMemberships } = await DB.supabase
-                .from("calendar_members").select("calendar_id")
+                .from("calendar_members").select("calendar_id, role")
                 .eq("user_id", Auth.getUserId());
-            if (myMemberships) myMemberships.forEach(m => myCalIds.add(m.calendar_id));
-            return data.filter(c => !myCalIds.has(c.id));
+            const myRoles = {};
+            if (myMemberships) myMemberships.forEach(m => { myRoles[m.calendar_id] = m.role; });
+
+            // Filter out calendars I own or am an active member of
+            return data
+                .filter(c => {
+                    const role = myRoles[c.id];
+                    if (c.owner_id === Auth.getUserId()) return false; // I own it
+                    if (role && role !== "pending") return false; // already active member
+                    return true;
+                })
+                .map(c => ({ ...c, _status: myRoles[c.id] || null })); // add pending status
         } catch (e) { console.error(e); return []; }
     },
 
@@ -691,6 +700,16 @@ const SharedCalendar = {
                 calendar_id: calId, user_id: Auth.getUserId(), role: "pending",
                 requested_role: requestedRole || "viewer",
             });
+            // Notify calendar owner via email
+            const cal = this.calendars.find(c => c.id === calId) ||
+                (await DB.supabase.from("shared_calendars").select("name").eq("id", calId).single()).data;
+            if (Auth._sendNotification) {
+                Auth._sendNotification("calendar_request", {
+                    email: Auth.user.email,
+                    calendarName: cal?.name || "Unknown",
+                    requestedRole: requestedRole || "viewer",
+                });
+            }
             showToast("Access requested as " + (requestedRole || "viewer") + "! Waiting for approval.");
         } catch (e) { console.error(e); showToast("Request failed"); }
     },

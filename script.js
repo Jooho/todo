@@ -1498,6 +1498,77 @@ function renderSettingsView() {
     } else if (umSection) {
         umSection.style.display = "none";
     }
+    // Calendar pending requests (for all calendar owners)
+    if (_useSupabase() && typeof SharedCalendar !== "undefined") {
+        _renderCalendarRequests();
+    }
+}
+
+async function _renderCalendarRequests() {
+    const section = document.getElementById("calendar-requests-section");
+    if (!section) return;
+
+    // Find calendars I own
+    const myCals = SharedCalendar.calendars.filter(c => c.owner_id === Auth.getUserId());
+    if (!myCals.length) { section.style.display = "none"; return; }
+
+    // Get pending members for my calendars
+    const calIds = myCals.map(c => c.id);
+    const { data: pendingMembers } = await DB.supabase
+        .from("calendar_members").select("calendar_id, user_id, requested_role, joined_at")
+        .in("calendar_id", calIds).eq("role", "pending");
+
+    if (!pendingMembers || !pendingMembers.length) {
+        section.style.display = "none";
+        return;
+    }
+
+    section.style.display = "";
+    const list = document.getElementById("calendar-requests-list");
+    list.innerHTML = "";
+
+    // Load profiles
+    const userIds = pendingMembers.map(m => m.user_id);
+    let profiles = {};
+    if (userIds.length) {
+        const { data } = await DB.supabase.from("profiles").select("id, display_name, email").in("id", userIds);
+        if (data) data.forEach(p => { profiles[p.id] = p; });
+    }
+
+    for (const m of pendingMembers) {
+        const cal = myCals.find(c => c.id === m.calendar_id);
+        const profile = profiles[m.user_id] || {};
+        const displayName = profile.display_name || profile.email || "Unknown";
+
+        const row = document.createElement("div");
+        row.className = "um-row";
+
+        const info = document.createElement("div");
+        info.style.cssText = "flex:1;min-width:0;";
+        info.innerHTML = `<div style="font-size:0.85rem;font-weight:600;color:var(--text2);">${escapeHtml(displayName)}</div>
+            <div style="font-size:0.72rem;color:var(--text-faint);">→ ${escapeHtml(cal?.name || "")} as ${m.requested_role || "viewer"}</div>`;
+
+        const approveBtn = document.createElement("button");
+        approveBtn.className = "um-btn approve"; approveBtn.textContent = "Approve";
+        approveBtn.addEventListener("click", async () => {
+            await SharedCalendar.updateMemberRole(m.calendar_id, m.user_id, m.requested_role || "viewer");
+            showToast(displayName + " approved");
+            _renderCalendarRequests();
+        });
+
+        const rejectBtn = document.createElement("button");
+        rejectBtn.className = "um-btn reject"; rejectBtn.textContent = "Reject";
+        rejectBtn.addEventListener("click", async () => {
+            await SharedCalendar.removeMember(m.calendar_id, m.user_id);
+            showToast(displayName + " rejected");
+            _renderCalendarRequests();
+        });
+
+        row.appendChild(info);
+        row.appendChild(approveBtn);
+        row.appendChild(rejectBtn);
+        list.appendChild(row);
+    }
 }
 
 async function _renderUserManagement() {
@@ -2254,13 +2325,28 @@ curl -X POST ${API_BASE} \\
                 roleSelect.appendChild(o);
             }
             const reqBtn = document.createElement("button");
-            reqBtn.className = "discover-req-btn"; reqBtn.textContent = "Request";
-            reqBtn.addEventListener("click", async () => {
-                await SharedCalendar.requestAccess(cal.id, roleSelect.value);
-                reqBtn.textContent = "Requested";
-                reqBtn.disabled = true;
+            reqBtn.className = "discover-req-btn";
+            if (cal._status === "pending") {
+                reqBtn.textContent = "Cancel";
+                reqBtn.className = "discover-req-btn cancel";
                 roleSelect.disabled = true;
-            });
+                reqBtn.addEventListener("click", async () => {
+                    await DB.supabase.from("calendar_members")
+                        .delete().eq("calendar_id", cal.id).eq("user_id", Auth.getUserId());
+                    showToast("Request cancelled");
+                    // Refresh list
+                    document.getElementById("discover-calendars-btn").click();
+                    setTimeout(() => document.getElementById("discover-calendars-btn").click(), 300);
+                });
+            } else {
+                reqBtn.textContent = "Request";
+                reqBtn.addEventListener("click", async () => {
+                    await SharedCalendar.requestAccess(cal.id, roleSelect.value);
+                    reqBtn.textContent = "Pending";
+                    reqBtn.disabled = true;
+                    roleSelect.disabled = true;
+                });
+            }
             item.appendChild(dot);
             const info = document.createElement("div");
             info.className = "discover-info";

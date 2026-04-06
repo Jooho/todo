@@ -83,6 +83,8 @@ const Auth = {
                     email: email,
                     status: "pending",
                 });
+                // Notify admin via email
+                this._sendNotification("access_request", { email });
                 this._showPendingUI("Your access request has been sent. Please wait for admin approval.");
                 return;
             }
@@ -225,6 +227,17 @@ const Auth = {
                 if (typeof showToast === "function") showToast("New access request received");
             })
             .subscribe();
+    },
+
+    // Send notification email via Edge Function
+    async _sendNotification(type, data) {
+        if (!this._supabase) return;
+        try {
+            const { error } = await this._supabase.functions.invoke("send-notification", {
+                body: { type, data },
+            });
+            if (error) console.error("Notification error:", error);
+        } catch (e) { console.error("Notification send failed:", e); }
     },
 
     async approveUser(email) {
