@@ -120,16 +120,27 @@ const DetailPanel = {
         // Render subtasks
         this.renderSubtasks();
 
-        // Populate calendar select
-        const calSel = document.getElementById("dp-calendar");
-        if (calSel) {
-            calSel.innerHTML = '<option value="">Personal</option>';
-            if (typeof SharedCalendar !== "undefined") {
-                for (const cal of SharedCalendar.calendars) {
-                    const o = document.createElement("option");
-                    o.value = cal.id; o.textContent = cal.name;
-                    if (cal.id === task.shared_calendar_id) o.selected = true;
-                    calSel.appendChild(o);
+        // Populate shared calendar list (checkboxes, no Personal)
+        const calList = document.getElementById("dp-calendar-list");
+        if (calList && typeof SharedCalendar !== "undefined") {
+            calList.innerHTML = "";
+            const writableCals = SharedCalendar.calendars.filter(c => SharedCalendar.canEdit(c.id));
+            if (writableCals.length === 0) {
+                calList.innerHTML = '<div style="font-size:0.78rem;color:var(--text-faint);">No shared calendars</div>';
+            } else {
+                for (const cal of writableCals) {
+                    const label = document.createElement("label");
+                    label.className = "dp-cal-option";
+                    const cb = document.createElement("input");
+                    cb.type = "checkbox"; cb.value = cal.id;
+                    cb.checked = cal.id === task.shared_calendar_id;
+                    cb.disabled = !canEdit;
+                    const dot = document.createElement("span");
+                    dot.style.cssText = `width:8px;height:8px;border-radius:50%;background:${cal.color};flex-shrink:0;`;
+                    const name = document.createElement("span");
+                    name.textContent = cal.name;
+                    label.appendChild(cb); label.appendChild(dot); label.appendChild(name);
+                    calList.appendChild(label);
                 }
             }
         }
@@ -137,7 +148,6 @@ const DetailPanel = {
 
     save() {
         if (!this._taskId) return;
-        const newCalId = document.getElementById("dp-calendar") ? document.getElementById("dp-calendar").value : "";
         const data = {
             text: document.getElementById("dp-title").value,
             description: document.getElementById("dp-desc").value,
@@ -146,28 +156,29 @@ const DetailPanel = {
             dueTime: document.getElementById("dp-allday").checked ? "" : document.getElementById("dp-time").value,
         };
 
-        // Handle calendar change (Personal ↔ Shared)
-        const task = tasks.find(t => t.id === this._taskId);
-        const oldCalId = task ? task.shared_calendar_id : null;
-        if (newCalId !== (oldCalId || "")) {
-            data.shared_calendar_id = newCalId || null;
-            // If moving to Supabase shared, need to update shared_calendar_id in DB
-            if (typeof _useSupabase === "function" && _useSupabase()) {
-                DB.supabase.from("tasks").update({
-                    shared_calendar_id: newCalId || null
-                }).eq("id", this._taskId).then(() => {
-                    if (typeof loadTasksFromSupabase === "function") loadTasksFromSupabase();
-                    if (typeof SharedCalendar !== "undefined") SharedCalendar.loadSharedTasks().then(() => { if (typeof renderAll === "function") renderAll(); });
-                });
+        // Update the task itself
+        if (typeof updateTask === "function") updateTask(this._taskId, data);
+
+        // Copy to newly checked shared calendars
+        const calList = document.getElementById("dp-calendar-list");
+        if (calList && typeof SharedCalendar !== "undefined" && typeof _useSupabase === "function" && _useSupabase()) {
+            const found = typeof _findTask === "function" ? _findTask(this._taskId) : null;
+            const currentCalId = found ? found.task.shared_calendar_id : null;
+            const checkboxes = calList.querySelectorAll("input[type=checkbox]");
+            for (const cb of checkboxes) {
+                if (cb.checked && cb.value !== currentCalId) {
+                    // Create a copy in this shared calendar
+                    if (typeof addTask === "function") {
+                        addTask(data.text, data.category, data.dueDate, data.dueTime, data.description, cb.value);
+                    }
+                }
             }
         }
 
-        if (typeof updateTask === "function" && updateTask(this._taskId, data)) {
-            if (typeof renderAll === "function") renderAll();
-            // Re-render panel with updated task
-            const t = tasks.find(t => t.id === this._taskId);
-            if (t) this.render(t);
-        }
+        if (typeof renderAll === "function") renderAll();
+        // Re-render panel with updated task
+        const found2 = typeof _findTask === "function" ? _findTask(this._taskId) : null;
+        if (found2) this.render(found2.task);
     },
 
     archive() {

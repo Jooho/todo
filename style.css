@@ -1045,6 +1045,16 @@ body.sidebar-collapsed .main-content { margin-left: 60px; }
     background: var(--accent); color: #fff; font-size: 1rem; cursor: pointer;
 }
 
+.dp-shared-section { margin-bottom: 8px; }
+.dp-calendar-list { display: flex; flex-direction: column; gap: 2px; }
+.dp-cal-option {
+    display: flex; align-items: center; gap: 6px;
+    padding: 5px 8px; border-radius: 4px; cursor: pointer;
+    font-size: 0.82rem; color: var(--text2);
+}
+.dp-cal-option:hover { background: var(--hover); }
+.dp-cal-option input { accent-color: var(--accent); }
+
 .dp-info { display: flex; flex-direction: column; gap: 4px; font-size: 0.75rem; color: var(--text-faint); }
 
 .detail-panel-actions {

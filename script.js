@@ -146,11 +146,35 @@ function addTask(text, category, dueDate, dueTime, description, sharedCalendarId
     }
 }
 
+// Find task in personal or shared lists
+function _findTask(id) {
+    const t = tasks.find(t => t.id === id);
+    if (t) return { task: t, isShared: false };
+    if (typeof SharedCalendar !== "undefined") {
+        const s = SharedCalendar._sharedTasks.find(t => t.id === id);
+        if (s) return { task: s, isShared: true };
+    }
+    return null;
+}
+
+function _reloadSharedTasks() {
+    if (typeof SharedCalendar !== "undefined") {
+        SharedCalendar.loadSharedTasks().then(() => renderAll());
+    }
+}
+
 function deleteTask(id) {
+    const found = _findTask(id);
     if (_useSupabase()) {
         DB.supabase.from("tasks").delete().eq("id", id).then(({ error }) => {
-            if (error) showToast("Delete failed: " + error.message);
-            else loadTasksFromSupabase();
+            if (error) { showToast("Delete failed: " + error.message); return; }
+            if (found && found.isShared) {
+                _reloadSharedTasks();
+            } else {
+                tasks = tasks.filter(t => t.id !== id);
+                renderAll();
+                loadTasksFromSupabase();
+            }
         });
     } else {
         tasks = tasks.filter(t => t.id !== id);
@@ -160,8 +184,9 @@ function deleteTask(id) {
 }
 
 function toggleTask(id) {
-    const t = tasks.find(t => t.id === id);
-    if (!t) return;
+    const found = _findTask(id);
+    if (!found) return;
+    const t = found.task;
     t.completed = !t.completed;
 
     if (_useSupabase()) {
@@ -169,7 +194,8 @@ function toggleTask(id) {
             completed: t.completed, updated_at: new Date().toISOString()
         }).eq("id", id).then(({ error }) => {
             if (error) showToast("Update failed: " + error.message);
-            renderAll();
+            if (found.isShared) _reloadSharedTasks();
+            else renderAll();
         });
     } else {
         saveTasks();
@@ -178,8 +204,9 @@ function toggleTask(id) {
 }
 
 function updateTask(id, data) {
-    const t = tasks.find(t => t.id === id);
-    if (!t) return false;
+    const found = _findTask(id);
+    if (!found) return false;
+    const t = found.task;
     if (data.text !== undefined) { const s = data.text.trim(); if (!s) return false; t.text = s; }
     if (data.category !== undefined) t.category = data.category;
     if (data.dueDate !== undefined) t.dueDate = data.dueDate || null;
@@ -192,6 +219,7 @@ function updateTask(id, data) {
         const row = DB._taskToRow(t);
         DB.supabase.from("tasks").update(row).eq("id", id).then(({ error }) => {
             if (error) showToast("Update failed: " + error.message);
+            if (found.isShared) _reloadSharedTasks();
         });
     } else {
         saveTasks();
@@ -709,9 +737,15 @@ async function loadArchivedFromSupabase() {
 }
 
 function archiveTask(id) {
+    let task;
     const idx = tasks.findIndex(t => t.id === id);
-    if (idx < 0) return;
-    const task = tasks.splice(idx, 1)[0];
+    if (idx >= 0) {
+        task = tasks.splice(idx, 1)[0];
+    } else if (typeof SharedCalendar !== "undefined") {
+        const sIdx = SharedCalendar._sharedTasks.findIndex(t => t.id === id);
+        if (sIdx >= 0) task = SharedCalendar._sharedTasks.splice(sIdx, 1)[0];
+    }
+    if (!task) return;
     task.archived = true;
     task.archivedAt = new Date().toISOString();
     archivedTasks.push(task);
