@@ -138,6 +138,13 @@
                     <button class="mobile-voice-btn" id="mobile-voice-btn" title="Today's summary">&#128264;</button>
                 </div>
                 <div class="list-toolbar">
+                    <!-- Date filter row -->
+                    <div class="date-filter-row">
+                        <button class="date-filter-btn active" data-date="today" id="dfb-today">Today</button>
+                        <input type="date" id="date-filter-picker" class="date-filter-picker" aria-label="Pick date" title="Pick a specific date">
+                        <button class="date-filter-btn" data-date="all">All</button>
+                        <button class="overdue-action-btn" id="overdue-action-btn" style="display:none">Handle overdue</button>
+                    </div>
                     <div class="toolbar-row">
                         <input type="text" id="search-input" placeholder="Search..." class="search-input toolbar-search" aria-label="Search tasks">
                         <input type="text" id="task-input" placeholder="Add a new task..." maxlength="200" autofocus aria-label="New task text" class="toolbar-task-input">

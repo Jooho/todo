@@ -520,13 +520,109 @@ function _showClearCompletedModal(completedTasks) {
     document.body.appendChild(overlay);
 }
 
-function _executeClearActions(taskActions) {
-    let archived = 0, deleted = 0;
+function _showOverdueModal(overdueTasks) {
+    const existing = document.getElementById("clear-modal-overlay");
+    if (existing) existing.remove();
+
+    const overlay = document.createElement("div");
+    overlay.id = "clear-modal-overlay";
+    overlay.className = "popup-overlay";
+    overlay.style.cssText = "display:flex;align-items:center;justify-content:center;z-index:200;";
+
+    const modal = document.createElement("div");
+    modal.style.cssText = "background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;max-width:460px;width:92%;max-height:80vh;display:flex;flex-direction:column;gap:12px;box-shadow:0 8px 30px rgba(0,0,0,0.3);";
+
+    const title = document.createElement("h3");
+    title.style.cssText = "font-size:1rem;color:var(--danger);margin:0;";
+    title.textContent = `${overdueTasks.length} overdue task(s)`;
+    modal.appendChild(title);
+
+    // Reschedule date picker
+    const rescheduleRow = document.createElement("div");
+    rescheduleRow.style.cssText = "display:flex;align-items:center;gap:8px;";
+    const rescheduleLabel = document.createElement("label");
+    rescheduleLabel.style.cssText = "font-size:0.82rem;color:var(--text2);white-space:nowrap;";
+    rescheduleLabel.textContent = "Reschedule to:";
+    const datePicker = document.createElement("input");
+    datePicker.type = "date"; datePicker.value = formatDateKey(new Date());
+    datePicker.style.cssText = "padding:6px 8px;border:1px solid var(--border);border-radius:8px;font-size:0.82rem;background:var(--surface);color:var(--text2);flex:1;";
+    rescheduleRow.appendChild(rescheduleLabel);
+    rescheduleRow.appendChild(datePicker);
+    modal.appendChild(rescheduleRow);
+
+    // Task list
+    const listEl = document.createElement("div");
+    listEl.style.cssText = "overflow-y:auto;max-height:35vh;display:flex;flex-direction:column;gap:4px;";
+    const taskActions = [];
+    for (const task of overdueTasks) {
+        const row = document.createElement("div");
+        row.style.cssText = "display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;background:var(--surface2);";
+        const cat = getCat(task.category);
+        const dot = document.createElement("span");
+        dot.style.cssText = `width:8px;height:8px;border-radius:50%;background:${safeColor(cat.color)};flex-shrink:0;`;
+        const text = document.createElement("span");
+        text.style.cssText = "flex:1;font-size:0.82rem;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
+        text.textContent = task.text;
+        const dateSpan = document.createElement("span");
+        dateSpan.style.cssText = "font-size:0.7rem;color:var(--danger);flex-shrink:0;";
+        dateSpan.textContent = task.dueDate;
+        const select = document.createElement("select");
+        select.style.cssText = "padding:3px 6px;border:1px solid var(--border);border-radius:4px;font-size:0.72rem;background:var(--surface);color:var(--text2);";
+        select.innerHTML = '<option value="reschedule">Reschedule</option><option value="archive">Archive</option><option value="delete">Delete</option><option value="skip">Skip</option>';
+        const entry = { id: task.id, action: "reschedule" };
+        taskActions.push(entry);
+        select.addEventListener("change", () => { entry.action = select.value; });
+        row.appendChild(dot); row.appendChild(text); row.appendChild(dateSpan); row.appendChild(select);
+        listEl.appendChild(row);
+    }
+    modal.appendChild(listEl);
+
+    // Bulk buttons
+    const bulkRow = document.createElement("div");
+    bulkRow.style.cssText = "display:flex;gap:6px;flex-wrap:wrap;";
+    const mkBtn = (label, style, fn) => {
+        const b = document.createElement("button");
+        b.textContent = label; b.style.cssText = `flex:1;padding:8px;border:none;border-radius:8px;cursor:pointer;font-weight:600;font-size:0.8rem;${style}`;
+        b.addEventListener("click", fn); return b;
+    };
+    bulkRow.appendChild(mkBtn("Reschedule All", "background:var(--accent);color:#fff;", () => {
+        taskActions.forEach(e => e.action = "reschedule");
+        _executeClearActions(taskActions, datePicker.value); overlay.remove();
+    }));
+    bulkRow.appendChild(mkBtn("Archive All", "background:var(--surface3);color:var(--text2);", () => {
+        taskActions.forEach(e => e.action = "archive");
+        _executeClearActions(taskActions, datePicker.value); overlay.remove();
+    }));
+    bulkRow.appendChild(mkBtn("Delete All", "background:var(--danger-bg);color:var(--danger);", () => {
+        taskActions.forEach(e => e.action = "delete");
+        _executeClearActions(taskActions, datePicker.value); overlay.remove();
+    }));
+    modal.appendChild(bulkRow);
+
+    const applyRow = document.createElement("div");
+    applyRow.style.cssText = "display:flex;gap:8px;";
+    applyRow.appendChild(mkBtn("Apply", "background:var(--accent);color:#fff;", () => {
+        _executeClearActions(taskActions, datePicker.value); overlay.remove();
+    }));
+    applyRow.appendChild(mkBtn("Cancel", "background:var(--surface3);color:var(--text2);", () => overlay.remove()));
+    modal.appendChild(applyRow);
+
+    overlay.appendChild(modal);
+    overlay.addEventListener("click", e => { if (e.target === overlay) overlay.remove(); });
+    document.body.appendChild(overlay);
+}
+
+function _executeClearActions(taskActions, rescheduleDate) {
+    let archived = 0, deleted = 0, rescheduled = 0;
     const toDelete = [];
 
     for (const { id, action } of taskActions) {
         if (action === "archive") { archiveTask(id); archived++; }
         else if (action === "delete") { toDelete.push(id); deleted++; }
+        else if (action === "reschedule" && rescheduleDate) {
+            updateTask(id, { dueDate: rescheduleDate });
+            rescheduled++;
+        }
     }
 
     if (toDelete.length) {
@@ -545,7 +641,9 @@ function _executeClearActions(taskActions) {
     const parts = [];
     if (archived) parts.push(`${archived} archived`);
     if (deleted) parts.push(`${deleted} deleted`);
+    if (rescheduled) parts.push(`${rescheduled} rescheduled to ${rescheduleDate}`);
     if (parts.length) showToast(parts.join(", "));
+    renderAll(); // refresh overdue styling
 }
 
 // ============================================================
@@ -563,11 +661,28 @@ function getAllTasks() {
     return all;
 }
 
+// Date filter: "today" | "all" | "YYYY-MM-DD"
+let activeDateFilter = "today";
+
 function getFilteredTasks() {
     let list = getAllTasks();
+
+    // Date filter
+    if (activeDateFilter === "today") {
+        const today = formatDateKey(new Date());
+        list = list.filter(t => (t.dueDate || "") === today);
+    } else if (activeDateFilter !== "all") {
+        list = list.filter(t => (t.dueDate || "") === activeDateFilter);
+    }
+
     if (activeFilter !== "all") list = list.filter(t => t.category === activeFilter);
     if (searchQuery) { const q = searchQuery.toLowerCase(); list = list.filter(t => t.text.toLowerCase().includes(q)); }
-    return list.slice().sort((a, b) => Number(a.completed) - Number(b.completed));
+
+    // Sort: newest first (by createdAt desc), completed at bottom
+    return list.slice().sort((a, b) => {
+        if (a.completed !== b.completed) return Number(a.completed) - Number(b.completed);
+        return (b.createdAt || "") > (a.createdAt || "") ? 1 : -1;
+    });
 }
 
 function getProgress(cat) {
@@ -693,29 +808,47 @@ function renderAll() {
 }
 
 function renderDashboard() {
+    // Progress bar — today's tasks only
+    const todayTasks = _getTodayTasks();
+    const allTodayTasks = getAllTasks().filter(t => t.dueDate === formatDateKey(new Date()));
+    const todayDone = allTodayTasks.filter(t => t.completed).length;
+    const todayTotal = allTodayTasks.length;
+    const todayPct = todayTotal ? Math.round(todayDone / todayTotal * 100) : 0;
+
     const all = getProgress();
-    const filtered = getFilteredTasks();
-    const filterLabel = activeFilter === "all" ? "" : ` (${activeFilter}: ${filtered.length})`;
-    document.getElementById("stats-text").textContent = `${all.done}/${all.total} completed (${all.pct}%)${filterLabel}`;
-    document.getElementById("stats-today").textContent = `Today: ${getTodayCount()}`;
-    document.getElementById("progress-fill").style.width = `${all.pct}%`;
-    const todayRemaining = _getTodayTasks().length;
+    document.getElementById("stats-text").textContent = `Today: ${todayDone}/${todayTotal} (${todayPct}%) · Total: ${all.done}/${all.total}`;
+    document.getElementById("stats-today").textContent = `Overdue: ${_getOverdueTasks().length}`;
+    document.getElementById("progress-fill").style.width = `${todayPct}%`;
+    const todayRemaining = todayTasks.length;
     document.getElementById("remaining-badge").textContent = todayRemaining;
-    document.getElementById("remaining-badge").title = `${todayRemaining} tasks today / ${all.remaining} total remaining`;
+    document.getElementById("remaining-badge").title = `${todayRemaining} tasks today`;
     // Mobile progress
     const mpFill = document.getElementById("mobile-progress-fill");
     const mpText = document.getElementById("mobile-progress-text");
-    if (mpFill) mpFill.style.width = `${all.pct}%`;
-    if (mpText) mpText.textContent = `${all.done}/${all.total} done`;
+    if (mpFill) mpFill.style.width = `${todayPct}%`;
+    if (mpText) mpText.textContent = `${todayDone}/${todayTotal} today`;
 
     const c = document.getElementById("dashboard-categories"); c.innerHTML = "";
+    const todayKey = formatDateKey(new Date());
     for (const cat of categories) {
         const p = getProgress(cat.id);
+        // Today stats for category
+        const todayCatTasks = getAllTasks().filter(t => t.category === cat.id && t.dueDate === todayKey);
+        const todayCatDone = todayCatTasks.filter(t => t.completed).length;
+        const todayCatTotal = todayCatTasks.length;
+        const todayPct = todayCatTotal ? Math.round(todayCatDone / todayCatTotal * 100) : 0;
         const el = document.createElement("div"); el.className = "cat-stat";
         el.style.cursor = "pointer";
         el.innerHTML = `<span class="cat-stat-dot" style="background:${safeColor(cat.color)}"></span>
-            <div class="cat-stat-info"><div class="cat-stat-label">${escapeHtml(cat.label)}</div><div class="cat-stat-nums">${p.done}/${p.total}</div></div>
-            <div class="cat-stat-bar"><div class="cat-stat-bar-fill" style="width:${p.pct}%;background:${safeColor(cat.color)}"></div></div>`;
+            <div class="cat-stat-info">
+              <div class="cat-stat-label">${escapeHtml(cat.label)}</div>
+              <div class="cat-stat-nums">
+                <span title="Today">Today ${todayCatDone}/${todayCatTotal}</span>
+                <span class="cat-stat-sep">·</span>
+                <span title="Total">All ${p.done}/${p.total}</span>
+              </div>
+            </div>
+            <div class="cat-stat-bar"><div class="cat-stat-bar-fill" style="width:${todayPct}%;background:${safeColor(cat.color)}"></div></div>`;
         el.addEventListener("click", () => { activeFilter = cat.id; saveFilter(); setActiveView("list"); renderAll(); });
         c.appendChild(el);
     }
@@ -724,11 +857,26 @@ function renderDashboard() {
 // renderFilters is now handled by renderFilterButtons() in Section 7
 
 function renderTaskList() {
+    // Show/hide overdue action button
+    const overdueBtn = document.getElementById("overdue-action-btn");
+    const overdueTasks = _getOverdueTasks();
+    if (overdueBtn) {
+        if (overdueTasks.length > 0) {
+            overdueBtn.style.display = "";
+            overdueBtn.textContent = `Handle ${overdueTasks.length} overdue`;
+        } else {
+            overdueBtn.style.display = "none";
+        }
+    }
+
     const list = document.getElementById("task-list"), filtered = getFilteredTasks();
     list.innerHTML = "";
     if (!filtered.length) {
         const e = document.createElement("li"); e.className = "empty-state";
-        e.textContent = searchQuery ? `No results for "${searchQuery}"` : tasks.length === 0 ? "No tasks yet. Add one above!" : "No tasks in this category.";
+        const msg = activeDateFilter === "today" ? "No tasks for today." :
+            searchQuery ? `No results for "${searchQuery}"` :
+            tasks.length === 0 ? "No tasks yet. Add one above!" : "No tasks in this category.";
+        e.textContent = msg;
         list.appendChild(e); return;
     }
     for (const task of filtered) list.appendChild(createTaskElement(task));
@@ -737,7 +885,9 @@ function renderTaskList() {
 function createTaskElement(task) {
     const cat = getCat(task.category);
     const li = document.createElement("li");
-    li.className = `task-item${task.completed ? " completed" : ""}`;
+    const today = formatDateKey(new Date());
+    const isOverdue = !task.completed && task.dueDate && task.dueDate < today;
+    li.className = `task-item${task.completed ? " completed" : ""}${isOverdue ? " overdue" : ""}`;
 
     const cb = document.createElement("input"); cb.type = "checkbox"; cb.checked = task.completed;
     cb.addEventListener("change", () => { li.classList.add("completing"); setTimeout(() => toggleTask(task.id), 150); });
@@ -1162,13 +1312,15 @@ const Calendar = {
         const days = []; for (let i = 0; i < 7; i++) { const d = new Date(ws); d.setDate(d.getDate() + i); days.push(d); }
         const todayKey = formatDateKey(new Date());
 
-        // All-day bar
-        const allday = document.createElement("div"); allday.className = "cal-allday-bar";
-        const adLabel = document.createElement("span"); adLabel.className = "cal-allday-label"; adLabel.textContent = "All day";
-        allday.appendChild(adLabel);
+        // All-day row — per-column, aligned with day headers
+        const allday = document.createElement("div"); allday.className = "cal-allday-row";
+        const adCorner = document.createElement("div"); adCorner.className = "cal-allday-corner"; adCorner.textContent = "All day";
+        allday.appendChild(adCorner);
         for (const d of days) {
             const key = formatDateKey(d);
-            for (const t of this.getTasksForDate(key).filter(t => !t.dueTime)) allday.appendChild(this.createChip(t));
+            const col = document.createElement("div"); col.className = "cal-allday-col";
+            for (const t of this.getTasksForDate(key).filter(t => !t.dueTime)) col.appendChild(this.createChip(t));
+            allday.appendChild(col);
         }
         grid.appendChild(allday);
 
@@ -1246,11 +1398,19 @@ const Calendar = {
         const dateKey = formatDateKey(d);
         const todayKey = formatDateKey(new Date());
 
-        // All-day bar
+        // All-day bar — tasks with this date but no specific time
+        const alldayTasks = this.getTasksForDate(dateKey).filter(t => !t.dueTime);
         const allday = document.createElement("div"); allday.className = "cal-allday-bar";
         const adLabel = document.createElement("span"); adLabel.className = "cal-allday-label"; adLabel.textContent = "All day";
         allday.appendChild(adLabel);
-        for (const t of this.getTasksForDate(dateKey).filter(t => !t.dueTime)) allday.appendChild(this.createChip(t));
+        if (alldayTasks.length === 0) {
+            const empty = document.createElement("span");
+            empty.style.cssText = "font-size:0.75rem;color:var(--text-faint);line-height:22px;";
+            empty.textContent = "No all-day tasks";
+            allday.appendChild(empty);
+        } else {
+            for (const t of alldayTasks) allday.appendChild(this.createChip(t));
+        }
         grid.appendChild(allday);
 
         // Time grid — single column
@@ -1748,6 +1908,11 @@ function _getTodayTasks() {
     return getAllTasks().filter(t => t.dueDate === today && !t.completed);
 }
 
+function _getOverdueTasks() {
+    const today = formatDateKey(new Date());
+    return getAllTasks().filter(t => !t.completed && t.dueDate && t.dueDate < today);
+}
+
 function speakTodaySummary() {
     const todayTasks = _getTodayTasks();
     if (!todayTasks.length) {
@@ -2050,6 +2215,35 @@ document.addEventListener("DOMContentLoaded", () => {
     // Filters — now dynamically rendered by renderFilterButtons()
 
     // Archive search
+    // Set today's date in picker by default
+    document.getElementById("date-filter-picker").value = formatDateKey(new Date());
+
+    // Date filter buttons
+    document.querySelectorAll(".date-filter-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+            document.querySelectorAll(".date-filter-btn").forEach(b => b.classList.remove("active"));
+            btn.classList.add("active");
+            activeDateFilter = btn.dataset.date;
+            document.getElementById("date-filter-picker").value = "";
+            renderAll();
+        });
+    });
+
+    // Date picker
+    document.getElementById("date-filter-picker").addEventListener("change", e => {
+        if (!e.target.value) return;
+        document.querySelectorAll(".date-filter-btn").forEach(b => b.classList.remove("active"));
+        activeDateFilter = e.target.value;
+        renderAll();
+    });
+
+    // Overdue action button
+    document.getElementById("overdue-action-btn").addEventListener("click", () => {
+        const overdueTasks = _getOverdueTasks();
+        if (!overdueTasks.length) return;
+        _showOverdueModal(overdueTasks);
+    });
+
     document.getElementById("archive-search").addEventListener("input", e => {
         archiveSearch = e.target.value;
         renderArchiveView();
