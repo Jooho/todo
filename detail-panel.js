@@ -117,6 +117,9 @@ const DetailPanel = {
             }
         }
 
+        // Reminders
+        this.renderReminders(task);
+
         // Show daily until due date
         const showDailyCb = document.getElementById("dp-show-daily");
         if (showDailyCb) {
@@ -264,6 +267,67 @@ const DetailPanel = {
         // Non-recurring
         if (typeof deleteTask === "function") deleteTask(id);
         this.close();
+    },
+
+    // --- Reminder management ---
+    renderReminders(task) {
+        const list = document.getElementById("dp-reminder-list");
+        if (!list) return;
+        list.innerHTML = "";
+        const reminders = (task && task.reminders) || [];
+        const units = ["minutes", "hours", "days"];
+
+        reminders.forEach((r, i) => {
+            const item = document.createElement("div");
+            item.className = "dp-reminder-item";
+            item.addEventListener("click", (e) => e.stopPropagation());
+
+            const beforeInput = document.createElement("input");
+            beforeInput.type = "number"; beforeInput.min = "1"; beforeInput.max = "9999";
+            beforeInput.className = "dp-reminder-before"; beforeInput.value = r.before || 10;
+            beforeInput.addEventListener("change", () => {
+                const t = this._getTask(); if (!t) return;
+                t.reminders[i].before = parseInt(beforeInput.value) || 10;
+                this._saveReminders(t);
+            });
+
+            const unitSel = document.createElement("select");
+            unitSel.className = "dp-reminder-unit";
+            units.forEach(u => {
+                const o = document.createElement("option"); o.value = u; o.textContent = u;
+                if (u === r.unit) o.selected = true;
+                unitSel.appendChild(o);
+            });
+            unitSel.addEventListener("change", () => {
+                const t = this._getTask(); if (!t) return;
+                t.reminders[i].unit = unitSel.value;
+                this._saveReminders(t);
+            });
+
+            const label = document.createElement("span");
+            label.style.cssText = "font-size:0.75rem;color:var(--text-faint);";
+            label.textContent = "before due";
+
+            const del = document.createElement("button");
+            del.className = "dp-reminder-del"; del.textContent = "✕";
+            del.addEventListener("click", (e) => {
+                e.stopPropagation();
+                const t = this._getTask(); if (!t) return;
+                t.reminders.splice(i, 1);
+                this._saveReminders(t);
+            });
+
+            item.appendChild(beforeInput); item.appendChild(unitSel); item.appendChild(label); item.appendChild(del);
+            list.appendChild(item);
+        });
+    },
+
+    _saveReminders(task) {
+        if (typeof updateTask === "function") {
+            updateTask(this._taskId, { reminders: task.reminders });
+        }
+        this.renderReminders(task);
+        if (typeof _scheduleTaskReminders === "function") _scheduleTaskReminders();
     },
 
     // --- Subtask management ---
@@ -419,6 +483,15 @@ const DetailPanel = {
         document.getElementById("dp-category").addEventListener("change", () => this._updateSaveBtn());
         if (document.getElementById("dp-show-daily")) {
             document.getElementById("dp-show-daily").addEventListener("change", () => this._updateSaveBtn());
+        }
+        if (document.getElementById("dp-add-reminder-btn")) {
+            document.getElementById("dp-add-reminder-btn").addEventListener("click", (e) => {
+                e.stopPropagation();
+                const task = this._getTask(); if (!task) return;
+                if (!task.reminders) task.reminders = [];
+                task.reminders.push({ before: 10, unit: "minutes" });
+                this._saveReminders(task);
+            });
         }
         if (document.getElementById("dp-recurrence")) {
             document.getElementById("dp-recurrence").addEventListener("change", () => {

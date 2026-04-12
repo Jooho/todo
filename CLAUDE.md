@@ -54,3 +54,6 @@ todo_app/
 - All code and comments in English
 - No build tools, no npm packages (CDN only for Supabase JS)
 - localStorage as offline fallback, Supabase as primary when logged in
+
+## Git Commit Convention
+- Always use `git commit -S -s` (GPG sign + sign-off required)

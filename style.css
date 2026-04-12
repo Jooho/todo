@@ -1178,6 +1178,33 @@ body.sidebar-collapsed .main-content { margin-left: 60px; }
     background: var(--accent); color: #fff; font-size: 1rem; cursor: pointer;
 }
 
+/* Notification settings */
+.notif-group { margin-bottom: 14px; padding-bottom: 14px; border-bottom: 1px solid var(--border-light); }
+.notif-group-label { font-size: 0.8rem; font-weight: 600; color: var(--text2); margin-bottom: 6px; }
+.notif-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 4px; }
+
+/* Task reminder in detail panel */
+.dp-reminders { margin-bottom: 8px; }
+.dp-reminder-item {
+    display: flex; align-items: center; gap: 6px; margin-bottom: 4px;
+}
+.dp-reminder-before {
+    width: 60px; padding: 3px 6px; border: 1px solid var(--border);
+    border-radius: 4px; background: var(--surface); color: var(--text2);
+    font-size: 0.8rem; outline: none; text-align: center;
+}
+.dp-reminder-unit {
+    padding: 3px 6px; border: 1px solid var(--border); border-radius: 4px;
+    background: var(--surface); color: var(--text2); font-size: 0.8rem; outline: none;
+}
+.dp-add-reminder-btn {
+    font-size: 0.75rem; padding: 3px 10px; border: 1px dashed var(--border);
+    border-radius: 6px; background: transparent; color: var(--text-muted); cursor: pointer;
+}
+.dp-add-reminder-btn:hover { border-color: var(--accent); color: var(--accent); }
+.dp-reminder-del { background: none; border: none; color: var(--text-faint); cursor: pointer; font-size: 0.9rem; }
+.dp-reminder-del:hover { color: var(--danger); }
+
 /* User management (admin) */
 .um-row {
     display: flex; align-items: center; gap: 10px;

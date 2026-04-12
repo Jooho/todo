@@ -19,6 +19,29 @@ ALTER TABLE tasks REPLICA IDENTITY FULL;
 -- Show daily until due date feature
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS show_daily BOOLEAN DEFAULT FALSE;
 
+-- Per-task reminders: [{"before": 10, "unit": "minutes"}, {"before": 1, "unit": "hours"}]
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS reminders JSONB DEFAULT '[]';
+
+-- User notification settings in profiles
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS notification_settings JSONB;
+-- Example: {"daily_summary": {"enabled": true, "time": "07:30", "timezone": "Asia/Seoul"}}
+
+-- Push tokens for future native app
+CREATE TABLE IF NOT EXISTS push_tokens (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+    token TEXT NOT NULL UNIQUE,
+    platform TEXT NOT NULL CHECK (platform IN ('web', 'ios', 'android')),
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+ALTER TABLE push_tokens ENABLE ROW LEVEL SECURITY;
+DO $$ BEGIN
+    CREATE POLICY "Users manage own tokens" ON push_tokens
+        FOR ALL USING (user_id = auth.uid());
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
 -- User access control
 CREATE TABLE IF NOT EXISTS approved_users (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

@@ -394,6 +394,7 @@ function updateTask(id, data) {
     if (data.subtasks !== undefined) t.subtasks = data.subtasks;
     if (data.show_daily !== undefined) t.show_daily = data.show_daily;
     if (data.auto_complete !== undefined) t.auto_complete = data.auto_complete;
+    if (data.reminders !== undefined) t.reminders = data.reminders;
     if (data.recurrence !== undefined) t.recurrence = data.recurrence;
     t.updatedAt = new Date().toISOString();
 
@@ -735,7 +736,18 @@ function getFilteredTasks() {
 function getProgress(cat) {
     let list = getAllTasks();
     if (cat) list = list.filter(t => t.category === cat);
-    const total = list.length, done = list.filter(t => t.completed).length;
+    // Count subtasks as individual items
+    let total = 0, done = 0;
+    for (const task of list) {
+        const subs = (task.subtasks || []).filter(s => s.dueDate); // only dated subtasks
+        if (subs.length > 0) {
+            total += subs.length;
+            done += subs.filter(s => s.completed).length;
+        } else {
+            total += 1;
+            if (task.completed) done += 1;
+        }
+    }
     return { total, done, remaining: total - done, pct: total ? Math.round(done / total * 100) : 0 };
 }
 
@@ -855,20 +867,36 @@ function renderAll() {
 }
 
 function renderDashboard() {
-    // Progress bar — today's tasks only
-    const todayTasks = _getTodayTasks();
-    const allTodayTasks = getAllTasks().filter(t => t.dueDate === formatDateKey(new Date()));
-    const todayDone = allTodayTasks.filter(t => t.completed).length;
-    const todayTotal = allTodayTasks.length;
+    // Progress bar — today's rows (subtasks count separately)
+    const todayKey2 = formatDateKey(new Date());
+    let todayDone = 0, todayTotal = 0;
+    for (const task of getAllTasks()) {
+        const todaySubs = (task.subtasks || []).filter(s => s.dueDate === todayKey2);
+        if (todaySubs.length > 0) {
+            todayTotal += todaySubs.length;
+            todayDone += todaySubs.filter(s => s.completed).length;
+        } else if (task.dueDate === todayKey2 || (task.show_daily && !task.completed && task.dueDate >= todayKey2)) {
+            todayTotal += 1;
+            if (task.completed) todayDone += 1;
+        }
+    }
     const todayPct = todayTotal ? Math.round(todayDone / todayTotal * 100) : 0;
 
     const all = getProgress();
     document.getElementById("stats-text").textContent = `Today: ${todayDone}/${todayTotal} (${todayPct}%) · Total: ${all.done}/${all.total}`;
     document.getElementById("stats-today").textContent = `Overdue: ${_getOverdueTasks().length}`;
     document.getElementById("progress-fill").style.width = `${todayPct}%`;
-    const todayRemaining = todayTasks.length;
-    document.getElementById("remaining-badge").textContent = todayRemaining;
-    document.getElementById("remaining-badge").title = `${todayRemaining} tasks today`;
+    // Count visible rows (including subtask expansion) for badge
+    const today = formatDateKey(new Date());
+    const prevFilter = activeDateFilter;
+    activeDateFilter = "today";
+    const visibleRows = getFilteredTasks().filter(t => !t.completed).reduce((count, task) => {
+        const todaySubs = (task.subtasks || []).filter(s => s.dueDate === today && !s.completed);
+        return count + (todaySubs.length > 0 ? todaySubs.length : 1);
+    }, 0);
+    activeDateFilter = prevFilter;
+    document.getElementById("remaining-badge").textContent = visibleRows;
+    document.getElementById("remaining-badge").title = `${visibleRows} tasks today`;
     // Mobile progress
     const mpFill = document.getElementById("mobile-progress-fill");
     const mpText = document.getElementById("mobile-progress-text");
@@ -879,10 +907,18 @@ function renderDashboard() {
     const todayKey = formatDateKey(new Date());
     for (const cat of categories) {
         const p = getProgress(cat.id);
-        // Today stats for category
-        const todayCatTasks = getAllTasks().filter(t => t.category === cat.id && t.dueDate === todayKey);
-        const todayCatDone = todayCatTasks.filter(t => t.completed).length;
-        const todayCatTotal = todayCatTasks.length;
+        // Today stats for category — count subtask rows, not just main tasks
+        let todayCatDone = 0, todayCatTotal = 0;
+        for (const task of getAllTasks().filter(t => t.category === cat.id)) {
+            const todaySubs = (task.subtasks || []).filter(s => s.dueDate === todayKey);
+            if (todaySubs.length > 0) {
+                todayCatTotal += todaySubs.length;
+                todayCatDone += todaySubs.filter(s => s.completed).length;
+            } else if (task.dueDate === todayKey || (task.show_daily && !task.completed && task.dueDate >= todayKey)) {
+                todayCatTotal += 1;
+                if (task.completed) todayCatDone += 1;
+            }
+        }
         const todayPct = todayCatTotal ? Math.round(todayCatDone / todayCatTotal * 100) : 0;
         const el = document.createElement("div"); el.className = "cat-stat";
         el.style.cursor = "pointer";
@@ -1787,6 +1823,8 @@ function renderSettingsView() {
     renderCategoryList();
     loadSupabaseSettings();
     if (window._loadApiTokens && _useSupabase()) window._loadApiTokens();
+    const voiceLangSel = document.getElementById("voice-lang-setting");
+    if (voiceLangSel) voiceLangSel.value = loadVoiceLang();
     // Admin: show user management
     const umSection = document.getElementById("user-management-section");
     if (umSection && typeof Auth !== "undefined" && Auth.isAdmin()) {
@@ -2047,30 +2085,161 @@ function _getOverdueTasks() {
 }
 
 function speakTodaySummary() {
-    const todayTasks = _getTodayTasks();
+    // Use same logic as list view — includes show_daily and subtask rows
+    const prevFilter = activeDateFilter;
+    activeDateFilter = "today";
+    const todayFiltered = getFilteredTasks().filter(t => !t.completed);
+    activeDateFilter = prevFilter;
+
+    // Build rows same way as renderTaskList — one entry per visible row
+    const today = formatDateKey(new Date());
+    const spoken = [];
+
+    for (const task of todayFiltered) {
+        const todaySubs = (task.subtasks || []).filter(s => s.dueDate === today && !s.completed);
+        if (todaySubs.length > 0) {
+            // One entry per today's subtask row
+            for (const sub of todaySubs) {
+                spoken.push(`${task.text}, subtask: ${sub.text}`);
+            }
+        } else {
+            spoken.push(task.text + (task.dueTime ? ` at ${task.dueTime}` : ""));
+        }
+    }
+
+    const todayTasks = spoken;
     if (!todayTasks.length) {
         _speak("No tasks for today. Enjoy your day!");
         return;
     }
 
-    const lines = [`You have ${todayTasks.length} task${todayTasks.length > 1 ? "s" : ""} for today.`];
-    todayTasks.forEach((t, i) => {
-        let line = `${i + 1}. ${t.text}`;
-        if (t.dueTime) line += `, at ${t.dueTime}`;
-        if (t.category) line += `, ${getCat(t.category).label}`;
-        lines.push(line);
+    const hasKorean = todayTasks.some(t => /[\uAC00-\uD7A3]/.test(t));
+    const count = todayTasks.length;
+    const dssIntro = loadDailySummarySettings().intro || "";
+    const defaultIntro = hasKorean
+        ? `오늘 할 일이 ${count}개 있습니다.`
+        : `You have ${count} task${count > 1 ? "s" : ""} for today.`;
+    // Prepend custom intro with a pause
+    const lines = dssIntro ? [dssIntro, defaultIntro] : [defaultIntro];
+    todayTasks.forEach((text, i) => {
+        lines.push(`${i + 1}. ${text}`);
     });
 
     _speak(lines.join(". "));
     showToast(`${todayTasks.length} tasks for today`);
 }
 
+const VOICE_LANG_KEY = "my-tasks-voice-lang";
+const DAILY_SUMMARY_KEY = "my-tasks-daily-summary";
+const DAILY_SUMMARY_SHOWN_KEY = "my-tasks-daily-summary-shown";
+
+function loadDailySummarySettings() {
+    try { return JSON.parse(localStorage.getItem(DAILY_SUMMARY_KEY) || "{}"); } catch(_) { return {}; }
+}
+function saveDailySummarySettings(s) { localStorage.setItem(DAILY_SUMMARY_KEY, JSON.stringify(s)); }
+
+function _checkDailySummary() {
+    const s = loadDailySummarySettings();
+    if (!s.enabled || !s.time) return;
+
+    const now = new Date();
+    const [h, m] = s.time.split(":").map(Number);
+    const scheduled = new Date(now);
+    scheduled.setHours(h, m, 0, 0);
+    const scheduledKey = formatDateKey(now) + "T" + s.time; // e.g. "2026-04-12T17:16"
+
+    const lastShown = localStorage.getItem(DAILY_SUMMARY_SHOWN_KEY);
+    if (lastShown === scheduledKey) return; // already shown for this schedule today
+
+    if (now >= scheduled) {
+        // Only show if within 2 hours of scheduled time (prevents showing on every app open after midnight)
+        const msSinceScheduled = now.getTime() - scheduled.getTime();
+        if (msSinceScheduled > 2 * 3600000) {
+            // Too long ago, just mark as shown without speaking
+            localStorage.setItem(DAILY_SUMMARY_SHOWN_KEY, scheduledKey);
+            return;
+        }
+        localStorage.setItem(DAILY_SUMMARY_SHOWN_KEY, scheduledKey);
+        setTimeout(speakTodaySummary, 1000);
+    } else {
+        // Schedule for later today
+        const delay = scheduled.getTime() - now.getTime();
+        setTimeout(() => {
+            localStorage.setItem(DAILY_SUMMARY_SHOWN_KEY, scheduledKey);
+            speakTodaySummary();
+        }, delay);
+    }
+}
+
+let _taskReminderTimers = [];
+
+function _scheduleTaskReminders() {
+    _taskReminderTimers.forEach(t => clearTimeout(t));
+    _taskReminderTimers = [];
+
+    const now = Date.now();
+    const allTasks = getAllTasks().filter(t => !t.completed && t.dueDate && t.dueTime && t.reminders && t.reminders.length);
+
+    for (const task of allTasks) {
+        const dueMs = new Date(task.dueDate + "T" + task.dueTime + ":00").getTime();
+        for (const r of task.reminders) {
+            const mult = r.unit === "days" ? 86400000 : r.unit === "hours" ? 3600000 : 60000;
+            const remindMs = dueMs - (r.before * mult);
+            const delay = remindMs - now;
+            if (delay > 0 && delay < 24 * 3600000) {
+                const timer = setTimeout(() => {
+                    if ("Notification" in window && Notification.permission === "granted") {
+                        new Notification(`Reminder: ${task.text}`, {
+                            body: `Due in ${r.before} ${r.unit}`,
+                        });
+                    }
+                    _speak(`Reminder. ${task.text}. Due in ${r.before} ${r.unit}.`);
+                    showToast(`Reminder: ${task.text}`);
+                }, delay);
+                _taskReminderTimers.push(timer);
+            }
+        }
+    }
+}
+
+function loadVoiceLang() { return localStorage.getItem(VOICE_LANG_KEY) || "auto"; }
+function saveVoiceLang(v) { localStorage.setItem(VOICE_LANG_KEY, v); }
+
+function _detectLang(text) {
+    const saved = loadVoiceLang();
+    if (saved !== "auto") return saved;
+    if (/[\uAC00-\uD7A3\u1100-\u11FF\u3130-\u318F]/.test(text)) return "ko-KR";
+    if (/[\u3040-\u30FF\u4E00-\u9FFF]/.test(text)) return "ja-JP";
+    return "en-US";
+}
+
+function _isSpeaking() {
+    return window.speechSynthesis && speechSynthesis.speaking;
+}
+
+function _stopSpeaking() {
+    if (window.speechSynthesis) speechSynthesis.cancel();
+    // Reset voice buttons
+    document.querySelectorAll("#voice-summary-btn, #mobile-voice-btn").forEach(btn => {
+        btn.textContent = "🔈"; btn.title = "Today's summary";
+    });
+}
+
 function _speak(text) {
     if (!window.speechSynthesis) return;
     speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(text);
-    u.lang = "en-US";
+    u.lang = _detectLang(text);
     u.rate = 0.95;
+    // Update button while speaking
+    document.querySelectorAll("#voice-summary-btn, #mobile-voice-btn").forEach(btn => {
+        btn.textContent = "⏹"; btn.title = "Stop";
+    });
+    u.onend = u.onerror = () => {
+        document.querySelectorAll("#voice-summary-btn, #mobile-voice-btn").forEach(btn => {
+            btn.textContent = "🔈"; btn.title = "Today's summary";
+        });
+    };
     speechSynthesis.speak(u);
 }
 
@@ -2188,7 +2357,11 @@ document.addEventListener("DOMContentLoaded", () => {
                 _subscribePersonalTasks();
                 // Notifications + reminders
                 _requestNotificationPermission();
-                setTimeout(() => _scheduleReminders(), 2000);
+                setTimeout(() => {
+                    _scheduleReminders();
+                    _scheduleTaskReminders();
+                    _checkDailySummary();
+                }, 2000);
             }
         });
     }
@@ -2663,10 +2836,13 @@ curl -X POST ${API_BASE} \\
     // Theme
     document.getElementById("theme-toggle").addEventListener("click", toggleTheme);
 
-    // Voice summary buttons (sidebar + mobile)
-    document.getElementById("voice-summary-btn").addEventListener("click", speakTodaySummary);
+    // Voice summary buttons (sidebar + mobile) — click to play/stop
+    const voiceToggle = () => {
+        if (_isSpeaking()) { _stopSpeaking(); } else { speakTodaySummary(); }
+    };
+    document.getElementById("voice-summary-btn").addEventListener("click", voiceToggle);
     const mobileVoiceBtn = document.getElementById("mobile-voice-btn");
-    if (mobileVoiceBtn) mobileVoiceBtn.addEventListener("click", speakTodaySummary);
+    if (mobileVoiceBtn) mobileVoiceBtn.addEventListener("click", voiceToggle);
 
     // Reminder setting
     const reminderSel = document.getElementById("reminder-setting");
@@ -2680,6 +2856,48 @@ curl -X POST ${API_BASE} \\
     }
 
     // Test buttons
+    // Daily summary settings
+    const dss = loadDailySummarySettings();
+    const dsEnabled = document.getElementById("daily-summary-enabled");
+    const dsTime = document.getElementById("daily-summary-time");
+    const dsTz = document.getElementById("daily-summary-tz");
+    if (dsEnabled) {
+        dsEnabled.checked = !!dss.enabled;
+        if (dsTime) dsTime.value = dss.time || "07:30";
+        if (dsTz) dsTz.value = dss.timezone || "auto";
+        const dsIntro = document.getElementById("daily-summary-intro");
+        if (dsIntro) dsIntro.value = dss.intro || "";
+        const saveDss = () => {
+            saveDailySummarySettings({
+                enabled: dsEnabled.checked,
+                time: dsTime ? dsTime.value : "07:30",
+                timezone: dsTz ? dsTz.value : "auto",
+                intro: dsIntro ? dsIntro.value.trim() : "",
+            });
+            showToast(dsEnabled.checked ? `Daily summary set for ${dsTime?.value}` : "Daily summary disabled");
+            // Re-schedule (don't immediately fire, let _checkDailySummary handle timing)
+            if (dsEnabled.checked) {
+                // Clear old shown key so new schedule takes effect tomorrow or at new time
+                // But only trigger now if time has already passed today
+                _checkDailySummary();
+            }
+        };
+        dsEnabled.addEventListener("change", saveDss);
+        if (dsTime) dsTime.addEventListener("change", saveDss);
+        if (dsTz) dsTz.addEventListener("change", saveDss);
+        if (dsIntro) { dsIntro.addEventListener("blur", saveDss); dsIntro.addEventListener("click", (e) => e.stopPropagation()); }
+    }
+
+    // Voice language setting
+    const voiceLangSel = document.getElementById("voice-lang-setting");
+    if (voiceLangSel) {
+        voiceLangSel.value = loadVoiceLang();
+        voiceLangSel.addEventListener("change", () => {
+            saveVoiceLang(voiceLangSel.value);
+            showToast("Voice language: " + voiceLangSel.options[voiceLangSel.selectedIndex].text);
+        });
+    }
+
     document.getElementById("test-voice-btn").addEventListener("click", speakTodaySummary);
     document.getElementById("test-notification-btn").addEventListener("click", () => {
         _requestNotificationPermission();

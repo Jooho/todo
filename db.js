@@ -149,6 +149,7 @@ const DB = {
             recurrence_parent_id: task.recurrence_parent_id || null,
             show_daily: task.show_daily || false,
             auto_complete: task.auto_complete || false,
+            reminders: task.reminders || [],
         };
     },
 
@@ -172,6 +173,7 @@ const DB = {
             recurrence_parent_id: row.recurrence_parent_id || null,
             show_daily: !!row.show_daily,
             auto_complete: !!row.auto_complete,
+            reminders: typeof row.reminders === "string" ? JSON.parse(row.reminders) : (row.reminders || []),
         };
     },
 };
