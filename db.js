@@ -147,6 +147,7 @@ const DB = {
             subtasks: task.subtasks || [],
             recurrence: task.recurrence || null,
             recurrence_parent_id: task.recurrence_parent_id || null,
+            show_daily: task.show_daily || false,
         };
     },
 
@@ -168,6 +169,7 @@ const DB = {
             shared_calendar_id: row.shared_calendar_id || null,
             recurrence: typeof row.recurrence === "string" ? JSON.parse(row.recurrence) : (row.recurrence || null),
             recurrence_parent_id: row.recurrence_parent_id || null,
+            show_daily: !!row.show_daily,
         };
     },
 };

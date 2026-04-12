@@ -45,6 +45,7 @@ const DetailPanel = {
             recurrence: document.getElementById("dp-recurrence") ? document.getElementById("dp-recurrence").value : "",
             recStart: document.getElementById("dp-rec-start") ? document.getElementById("dp-rec-start").value : "",
             recEnd: document.getElementById("dp-rec-end") ? document.getElementById("dp-rec-end").value : "",
+            showDaily: document.getElementById("dp-show-daily") ? document.getElementById("dp-show-daily").checked : false,
         };
     },
 
@@ -60,7 +61,8 @@ const DetailPanel = {
             document.getElementById("dp-allday").checked !== s.allday ||
             (document.getElementById("dp-recurrence") ? document.getElementById("dp-recurrence").value : "") !== s.recurrence ||
             (document.getElementById("dp-rec-start") ? document.getElementById("dp-rec-start").value : "") !== s.recStart ||
-            (document.getElementById("dp-rec-end") ? document.getElementById("dp-rec-end").value : "") !== s.recEnd
+            (document.getElementById("dp-rec-end") ? document.getElementById("dp-rec-end").value : "") !== s.recEnd ||
+            (document.getElementById("dp-show-daily") ? document.getElementById("dp-show-daily").checked : false) !== (s.showDaily || false)
         );
     },
 
@@ -113,6 +115,13 @@ const DetailPanel = {
                 recEnd.value = (task.recurrence && task.recurrence.endDate) || "";
                 recEnd.disabled = !canEdit || isChild;
             }
+        }
+
+        // Show daily until due date
+        const showDailyCb = document.getElementById("dp-show-daily");
+        if (showDailyCb) {
+            showDailyCb.checked = !!task.show_daily;
+            showDailyCb.disabled = !canEdit;
         }
 
         // Show creator for shared tasks
@@ -199,6 +208,7 @@ const DetailPanel = {
                 startDate: recStartDate || null,
                 endDate: recEndDate || null,
             } : null,
+            show_daily: document.getElementById("dp-show-daily") ? document.getElementById("dp-show-daily").checked : false,
         };
 
         // Capture old recurrence BEFORE updateTask changes it
@@ -327,6 +337,9 @@ const DetailPanel = {
             document.getElementById(id).addEventListener("input", () => this._updateSaveBtn());
         }
         document.getElementById("dp-category").addEventListener("change", () => this._updateSaveBtn());
+        if (document.getElementById("dp-show-daily")) {
+            document.getElementById("dp-show-daily").addEventListener("change", () => this._updateSaveBtn());
+        }
         if (document.getElementById("dp-recurrence")) {
             document.getElementById("dp-recurrence").addEventListener("change", () => {
                 this._updateSaveBtn();

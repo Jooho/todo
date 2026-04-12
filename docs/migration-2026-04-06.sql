@@ -16,6 +16,9 @@ END $$;
 -- Enable FULL replica identity so DELETE events include old row data
 ALTER TABLE tasks REPLICA IDENTITY FULL;
 
+-- Show daily until due date feature
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS show_daily BOOLEAN DEFAULT FALSE;
+
 -- User access control
 CREATE TABLE IF NOT EXISTS approved_users (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

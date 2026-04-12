@@ -392,6 +392,7 @@ function updateTask(id, data) {
     if (data.dueTime !== undefined) t.dueTime = data.dueTime || null;
     if (data.description !== undefined) t.description = data.description;
     if (data.subtasks !== undefined) t.subtasks = data.subtasks;
+    if (data.show_daily !== undefined) t.show_daily = data.show_daily;
     if (data.recurrence !== undefined) t.recurrence = data.recurrence;
     t.updatedAt = new Date().toISOString();
 
@@ -670,9 +671,17 @@ function getFilteredTasks() {
     // Date filter
     if (activeDateFilter === "today") {
         const today = formatDateKey(new Date());
-        list = list.filter(t => (t.dueDate || "") === today);
+        list = list.filter(t =>
+            (t.dueDate || "") === today ||
+            // show_daily: appear every day from creation until dueDate
+            (t.show_daily && !t.completed && t.dueDate >= today && (t.createdAt || "").substring(0, 10) <= today)
+        );
     } else if (activeDateFilter !== "all") {
-        list = list.filter(t => (t.dueDate || "") === activeDateFilter);
+        list = list.filter(t =>
+            (t.dueDate || "") === activeDateFilter ||
+            // show_daily tasks also appear on any day within their range
+            (t.show_daily && !t.completed && t.dueDate >= activeDateFilter && (t.createdAt || "").substring(0, 10) <= activeDateFilter)
+        );
     }
 
     if (activeFilter !== "all") list = list.filter(t => t.category === activeFilter);
@@ -910,7 +919,9 @@ function createTaskElement(task) {
         dueSpan.className = "task-due" + (isDueSoon(task) ? " due-soon" : "");
         const d = new Date(task.dueDate + "T00:00:00");
         const dateStr = d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric", weekday: "short" });
-        const recLabel = task.recurrence ? " \u{1F501} " + task.recurrence.type : (task.recurrence_parent_id ? " \u{1F501}" : "");
+        const recLabel = task.recurrence ? " \u{1F501} " + task.recurrence.type :
+            (task.recurrence_parent_id ? " \u{1F501}" :
+            (task.show_daily ? " \uD83D\uDCC6" : ""));
         dueSpan.textContent = dateStr + (task.dueTime ? " " + task.dueTime : "") + recLabel;
         content.appendChild(dueSpan);
     }
