@@ -209,6 +209,7 @@ const DetailPanel = {
                 endDate: recEndDate || null,
             } : null,
             show_daily: document.getElementById("dp-show-daily") ? document.getElementById("dp-show-daily").checked : false,
+            auto_complete: document.getElementById("dp-auto-complete") ? document.getElementById("dp-auto-complete").checked : false,
         };
 
         // Capture old recurrence BEFORE updateTask changes it
@@ -267,7 +268,9 @@ const DetailPanel = {
 
     // --- Subtask management ---
     _getTask() {
-        return tasks.find(t => t.id === this._taskId);
+        // Search both personal and shared tasks
+        const found = typeof _findTask === "function" ? _findTask(this._taskId) : null;
+        return found ? found.task : tasks.find(t => t.id === this._taskId);
     },
 
     renderSubtasks() {
@@ -276,31 +279,94 @@ const DetailPanel = {
         if (!list) return;
         list.innerHTML = "";
         const subs = (task && task.subtasks) || [];
+        const taskDueDate = task ? (task.dueDate || "") : "";
+        const today = typeof formatDateKey === "function" ? formatDateKey(new Date()) : new Date().toISOString().split("T")[0];
 
         for (let i = 0; i < subs.length; i++) {
             const sub = subs[i];
+            const isSubOverdue = !sub.completed && sub.dueDate && sub.dueDate < today;
             const item = document.createElement("div");
-            item.className = "dp-subtask-item" + (sub.completed ? " done" : "");
+            item.className = "dp-subtask-item" + (sub.completed ? " done" : "") + (isSubOverdue ? " overdue" : "");
+            item.addEventListener("click", (e) => e.stopPropagation());
 
             const cb = document.createElement("input");
             cb.type = "checkbox"; cb.checked = !!sub.completed;
-            cb.addEventListener("change", () => {
-                sub.completed = cb.checked;
+            cb.addEventListener("change", (e) => {
+                e.stopPropagation();
+                const currentTask = this._getTask();
+                if (!currentTask || !currentTask.subtasks[i]) return;
+                currentTask.subtasks[i].completed = cb.checked;
                 this._saveSubtasks();
             });
 
             const text = document.createElement("span");
             text.className = "dp-subtask-text"; text.textContent = sub.text;
+            text.title = "Click to edit";
+            text.style.cursor = "text";
+            text.addEventListener("click", (e) => {
+                e.stopPropagation();
+                const input = document.createElement("input");
+                input.type = "text"; input.value = sub.text;
+                input.style.cssText = "flex:1;padding:2px 4px;border:1px solid var(--accent);border-radius:4px;font-size:0.85rem;background:var(--surface);color:var(--text2);outline:none;";
+                item.replaceChild(input, text);
+                input.focus(); input.select();
+                const save = () => {
+                    const newText = input.value.trim();
+                    if (newText && newText !== sub.text) {
+                        const currentTask = this._getTask();
+                        if (currentTask && currentTask.subtasks[i]) {
+                            currentTask.subtasks[i].text = newText;
+                            this._saveSubtasks();
+                        }
+                    } else {
+                        item.replaceChild(text, input);
+                    }
+                };
+                input.addEventListener("keydown", (e) => {
+                    e.stopPropagation();
+                    if (e.key === "Enter") save();
+                    if (e.key === "Escape") item.replaceChild(text, input);
+                });
+                input.addEventListener("blur", save);
+                input.addEventListener("click", (e) => e.stopPropagation());
+            });
 
-            const del = document.createElement("button");
-            del.className = "dp-subtask-del"; del.textContent = "✕";
-            del.addEventListener("click", () => {
-                subs.splice(i, 1);
+            // Date picker for subtask — use index to avoid stale closure
+            const datePicker = document.createElement("input");
+            datePicker.type = "date"; datePicker.className = "dp-subtask-date";
+            datePicker.value = sub.dueDate || "";
+            datePicker.max = taskDueDate;
+            datePicker.title = "Subtask due date";
+            const subIndex = i;
+            datePicker.addEventListener("change", (e) => {
+                e.stopPropagation();
+                const currentTask = this._getTask();
+                if (!currentTask || !currentTask.subtasks[subIndex]) return;
+                currentTask.subtasks[subIndex].dueDate = datePicker.value || null;
                 this._saveSubtasks();
             });
 
-            item.appendChild(cb); item.appendChild(text); item.appendChild(del);
+            const del = document.createElement("button");
+            del.className = "dp-subtask-del"; del.textContent = "✕";
+            del.addEventListener("click", (e) => {
+                e.stopPropagation();
+                const currentTask = this._getTask();
+                if (!currentTask) return;
+                currentTask.subtasks.splice(i, 1);
+                this._saveSubtasks();
+            });
+
+            // Put date before text so picker opens to the right (within panel)
+            item.appendChild(cb); item.appendChild(datePicker); item.appendChild(text); item.appendChild(del);
             list.appendChild(item);
+        }
+
+        // Auto-complete toggle
+        const autoEl = document.getElementById("dp-auto-complete");
+        if (autoEl) {
+            autoEl.checked = !!(task && task.auto_complete);
+            autoEl.disabled = subs.length === 0;
+            autoEl.parentElement.style.opacity = subs.length === 0 ? "0.4" : "1";
         }
     },
 
@@ -310,13 +376,27 @@ const DetailPanel = {
         const task = this._getTask();
         if (!task) return;
         if (!task.subtasks) task.subtasks = [];
-        task.subtasks.push({ text: trimmed, completed: false });
+        const todayDate = typeof formatDateKey === "function" ? formatDateKey(new Date()) : new Date().toISOString().split("T")[0];
+        task.subtasks.push({ text: trimmed, completed: false, dueDate: todayDate });
+        // Auto-enable auto_complete when first subtask added
+        if (task.subtasks.length === 1 && !task.auto_complete) {
+            task.auto_complete = true;
+        }
         this._saveSubtasks();
     },
 
     _saveSubtasks() {
         const task = this._getTask();
         if (!task) return;
+        // Auto-complete/uncomplete main task based on subtask state
+        if (task.auto_complete && task.subtasks && task.subtasks.length > 0) {
+            const allDone = task.subtasks.every(s => s.completed);
+            if (allDone && !task.completed) {
+                if (typeof toggleTask === "function") toggleTask(this._taskId);
+            } else if (!allDone && task.completed) {
+                if (typeof toggleTask === "function") toggleTask(this._taskId);
+            }
+        }
         if (typeof updateTask === "function") {
             updateTask(this._taskId, { subtasks: task.subtasks });
         }
@@ -365,7 +445,10 @@ const DetailPanel = {
         }
 
         // Subtask add
-        document.getElementById("dp-subtask-add-btn").addEventListener("click", () => {
+        document.getElementById("dp-subtask-input").addEventListener("click", (e) => e.stopPropagation());
+        document.getElementById("dp-subtask-input").addEventListener("mousedown", (e) => e.stopPropagation());
+        document.getElementById("dp-subtask-input").addEventListener("mouseup", (e) => e.stopPropagation());
+        document.getElementById("dp-subtask-add-btn").addEventListener("click", (e) => { e.stopPropagation();
             const input = document.getElementById("dp-subtask-input");
             this.addSubtask(input.value);
             input.value = ""; input.focus();

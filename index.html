@@ -141,7 +141,11 @@
                     <!-- Date filter row -->
                     <div class="date-filter-row">
                         <button class="date-filter-btn active" data-date="today" id="dfb-today">Today</button>
-                        <input type="date" id="date-filter-picker" class="date-filter-picker" aria-label="Pick date" title="Pick a specific date">
+                        <div class="date-nav-group">
+                            <button class="date-nav-btn" id="date-nav-prev" title="Previous day">&#8249;</button>
+                            <input type="date" id="date-filter-picker" class="date-filter-picker" aria-label="Pick date" title="Pick a specific date">
+                            <button class="date-nav-btn" id="date-nav-next" title="Next day">&#8250;</button>
+                        </div>
                         <button class="date-filter-btn" data-date="all">All</button>
                         <button class="overdue-action-btn" id="overdue-action-btn" style="display:none">Handle overdue</button>
                     </div>
@@ -449,7 +453,12 @@
 
                 <!-- Subtasks -->
                 <div class="dp-subtasks">
-                    <div class="dp-subtasks-label">Subtasks</div>
+                    <div class="dp-subtasks-header">
+                        <div class="dp-subtasks-label">Subtasks</div>
+                        <label class="dp-auto-complete-label" title="Auto-complete main task when all subtasks done">
+                            <input type="checkbox" id="dp-auto-complete" disabled> Auto-complete
+                        </label>
+                    </div>
                     <div id="dp-subtask-list"></div>
                     <div class="dp-subtask-add">
                         <input type="text" id="dp-subtask-input" class="dp-subtask-input" placeholder="Add subtask..." maxlength="100">

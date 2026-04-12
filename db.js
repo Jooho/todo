@@ -148,6 +148,7 @@ const DB = {
             recurrence: task.recurrence || null,
             recurrence_parent_id: task.recurrence_parent_id || null,
             show_daily: task.show_daily || false,
+            auto_complete: task.auto_complete || false,
         };
     },
 
@@ -170,6 +171,7 @@ const DB = {
             recurrence: typeof row.recurrence === "string" ? JSON.parse(row.recurrence) : (row.recurrence || null),
             recurrence_parent_id: row.recurrence_parent_id || null,
             show_daily: !!row.show_daily,
+            auto_complete: !!row.auto_complete,
         };
     },
 };

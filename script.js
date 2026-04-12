@@ -393,6 +393,7 @@ function updateTask(id, data) {
     if (data.description !== undefined) t.description = data.description;
     if (data.subtasks !== undefined) t.subtasks = data.subtasks;
     if (data.show_daily !== undefined) t.show_daily = data.show_daily;
+    if (data.auto_complete !== undefined) t.auto_complete = data.auto_complete;
     if (data.recurrence !== undefined) t.recurrence = data.recurrence;
     t.updatedAt = new Date().toISOString();
 
@@ -621,7 +622,44 @@ function _executeClearActions(taskActions, rescheduleDate) {
         if (action === "archive") { archiveTask(id); archived++; }
         else if (action === "delete") { toDelete.push(id); deleted++; }
         else if (action === "reschedule" && rescheduleDate) {
-            updateTask(id, { dueDate: rescheduleDate });
+            const found = _findTask(id);
+            const t = found ? found.task : null;
+            // Reschedule subtask dates proportionally (keep intervals, new target = last subtask)
+            if (t && t.subtasks && t.subtasks.length > 0) {
+                const datedSubs = t.subtasks.filter(s => s.dueDate).sort((a, b) => a.dueDate > b.dueDate ? 1 : -1);
+                if (datedSubs.length > 0) {
+                    const oldTarget = t.dueDate || datedSubs[datedSubs.length - 1].dueDate;
+                    const newTarget = rescheduleDate;
+                    const oldTargetMs = new Date(oldTarget + "T00:00:00").getTime();
+                    const newTargetMs = new Date(newTarget + "T00:00:00").getTime();
+                    const today = formatDateKey(new Date());
+                    // Shift incomplete future subtasks
+                    let lastDate = null;
+                    for (const sub of datedSubs) {
+                        if (!sub.completed && sub.dueDate >= today) {
+                            const oldMs = new Date(sub.dueDate + "T00:00:00").getTime();
+                            if (lastDate === null) {
+                                // First pending sub: set to tomorrow
+                                const startMs = new Date(today + "T00:00:00").getTime() + 86400000;
+                                const d = new Date(startMs);
+                                sub.dueDate = formatDateKey(d);
+                            } else {
+                                // Keep same interval from previous
+                                const prevOldMs = new Date(datedSubs[datedSubs.indexOf(sub) - 1].dueDate + "T00:00:00").getTime();
+                                const interval = oldMs - prevOldMs;
+                                const newD = new Date(new Date(lastDate + "T00:00:00").getTime() + interval);
+                                sub.dueDate = formatDateKey(newD);
+                            }
+                            lastDate = sub.dueDate;
+                        }
+                    }
+                    updateTask(id, { dueDate: rescheduleDate, subtasks: t.subtasks });
+                } else {
+                    updateTask(id, { dueDate: rescheduleDate });
+                }
+            } else {
+                updateTask(id, { dueDate: rescheduleDate });
+            }
             rescheduled++;
         }
     }
@@ -888,41 +926,87 @@ function renderTaskList() {
         e.textContent = msg;
         list.appendChild(e); return;
     }
-    for (const task of filtered) list.appendChild(createTaskElement(task));
+    const today = formatDateKey(new Date());
+    const filterDate = (activeDateFilter === "today" || activeDateFilter === "all") ? today : activeDateFilter;
+
+    // Build all rows first, then sort: incomplete on top, completed at bottom
+    const rows = [];
+    for (const task of filtered) {
+        const todaySubs = (task.subtasks || []).filter(s => s.dueDate === filterDate);
+        if (todaySubs.length > 0) {
+            for (const sub of todaySubs) {
+                rows.push({ el: createTaskElement(task, sub), completed: sub.completed });
+            }
+        } else {
+            rows.push({ el: createTaskElement(task), completed: task.completed });
+        }
+    }
+    // incomplete first, completed last
+    rows.sort((a, b) => Number(a.completed) - Number(b.completed));
+    for (const row of rows) list.appendChild(row.el);
 }
 
-function createTaskElement(task) {
+function createTaskElement(task, activeSubtask) {
     const cat = getCat(task.category);
     const li = document.createElement("li");
     const today = formatDateKey(new Date());
     const isOverdue = !task.completed && task.dueDate && task.dueDate < today;
-    li.className = `task-item${task.completed ? " completed" : ""}${isOverdue ? " overdue" : ""}`;
+    // Re-fetch the subtask from the current task to avoid stale reference
+    const currentSub = activeSubtask ? (task.subtasks || []).find(s => s.text === activeSubtask.text && s.dueDate === activeSubtask.dueDate) || activeSubtask : null;
+    const isSubCompleted = currentSub && currentSub.completed;
+    const isSubOverdue = currentSub && !currentSub.completed && currentSub.dueDate && currentSub.dueDate < today;
+    li.className = `task-item${(task.completed || isSubCompleted) ? " completed" : ""}${(isOverdue || isSubOverdue) ? " overdue" : ""}`;
 
-    const cb = document.createElement("input"); cb.type = "checkbox"; cb.checked = task.completed;
-    cb.addEventListener("change", () => { li.classList.add("completing"); setTimeout(() => toggleTask(task.id), 150); });
+    const cb = document.createElement("input"); cb.type = "checkbox"; cb.checked = activeSubtask ? isSubCompleted : task.completed;
+    if (activeSubtask) {
+        cb.disabled = true;
+        cb.style.opacity = "0.3";
+        cb.style.cursor = "default";
+    } else {
+        cb.addEventListener("change", () => { li.classList.add("completing"); setTimeout(() => toggleTask(task.id), 150); });
+    }
 
     const tag = document.createElement("span"); tag.className = "category-tag";
-    tag.textContent = cat.label; tag.style.background = cat.color + "18"; tag.style.color = cat.color;
+    tag.textContent = cat.label; tag.style.background = safeColor(cat.color) + "18"; tag.style.color = safeColor(cat.color);
 
     const content = document.createElement("div"); content.className = "task-content";
     const textSpan = document.createElement("span"); textSpan.className = "task-text";
-    textSpan.innerHTML = highlightText(task.text);
+
+    // If showing for a specific subtask, display "Task — subtask"
+    if (activeSubtask) {
+        const mainText = document.createElement("span");
+        mainText.innerHTML = highlightText(task.text);
+        const sep = document.createElement("span");
+        sep.style.cssText = "color:var(--text-faint);margin:0 6px;";
+        sep.textContent = "—";
+        const subText = document.createElement("span");
+        subText.className = "task-subtask-ref";
+        subText.style.cssText = "color:var(--accent);font-size:0.9em;";
+        subText.textContent = activeSubtask.text;
+        textSpan.appendChild(mainText);
+        textSpan.appendChild(sep);
+        textSpan.appendChild(subText);
+    } else {
+        textSpan.innerHTML = highlightText(task.text);
+    }
 
     const timeSpan = document.createElement("div"); timeSpan.className = "task-time";
     timeSpan.textContent = timeAgo(task.createdAt);
 
     content.appendChild(textSpan); content.appendChild(timeSpan);
 
-    // Show due date with year
-    if (task.dueDate) {
+    // Show due date — for subtask rows, show subtask date; for main rows, show task date
+    const displayDate = activeSubtask ? currentSub?.dueDate : task.dueDate;
+    const displayTime = activeSubtask ? null : task.dueTime;
+    if (displayDate) {
         const dueSpan = document.createElement("div");
-        dueSpan.className = "task-due" + (isDueSoon(task) ? " due-soon" : "");
-        const d = new Date(task.dueDate + "T00:00:00");
+        dueSpan.className = "task-due" + (!activeSubtask && isDueSoon(task) ? " due-soon" : "");
+        const d = new Date(displayDate + "T00:00:00");
         const dateStr = d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric", weekday: "short" });
-        const recLabel = task.recurrence ? " \u{1F501} " + task.recurrence.type :
+        const recLabel = !activeSubtask ? (task.recurrence ? " \u{1F501} " + task.recurrence.type :
             (task.recurrence_parent_id ? " \u{1F501}" :
-            (task.show_daily ? " \uD83D\uDCC6" : ""));
-        dueSpan.textContent = dateStr + (task.dueTime ? " " + task.dueTime : "") + recLabel;
+            (task.show_daily ? " \uD83D\uDCC6" : ""))) : "";
+        dueSpan.textContent = dateStr + (displayTime ? " " + displayTime : "") + recLabel;
         content.appendChild(dueSpan);
     }
 
@@ -940,7 +1024,8 @@ function createTaskElement(task) {
     // Show subtask progress
     let subs = task.subtasks;
     if (typeof subs === "string") try { subs = JSON.parse(subs); } catch(_) { subs = []; }
-    if (Array.isArray(subs) && subs.length > 0) {
+    // Don't show subtask progress bar on subtask rows (they have their own Done button)
+    if (Array.isArray(subs) && subs.length > 0 && !activeSubtask) {
         task.subtasks = subs; // fix in place
         const done = subs.filter(s => s.completed).length;
         const total = subs.length;
@@ -988,7 +1073,44 @@ function createTaskElement(task) {
     });
     if (!canDel) delBtn.style.display = "none";
 
-    li.appendChild(cb); li.appendChild(tag); li.appendChild(content); li.appendChild(delBtn);
+    // If this row is for a specific subtask, add a Complete button
+    if (activeSubtask) {
+        const doneBtn = document.createElement("button");
+        doneBtn.className = "subtask-done-btn" + (isSubCompleted ? " done" : "");
+        doneBtn.textContent = isSubCompleted ? "✓ Done" : "Done";
+        doneBtn.title = isSubCompleted ? "Mark incomplete" : "Mark subtask complete";
+        const subText = activeSubtask.text;
+        const subDate = activeSubtask.dueDate;
+        doneBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            // Re-find the task and subtask by id/text (avoid stale reference)
+            const found = _findTask(task.id);
+            const currentTask = found ? found.task : null;
+            if (!currentTask || !currentTask.subtasks) return;
+            const subIdx = currentTask.subtasks.findIndex(s => s.text === subText && s.dueDate === subDate);
+            if (subIdx === -1) return;
+            const wasCompleted = currentTask.subtasks[subIdx].completed;
+            currentTask.subtasks[subIdx].completed = !wasCompleted;
+            updateTask(task.id, { subtasks: currentTask.subtasks });
+            // Auto-complete: all subtasks done → complete main task
+            if (currentTask.auto_complete) {
+                const allDone = currentTask.subtasks.every(s => s.completed);
+                if (allDone && !currentTask.completed) {
+                    toggleTask(task.id); // mark complete
+                } else if (!allDone && currentTask.completed) {
+                    toggleTask(task.id); // mark incomplete
+                }
+            }
+            // Immediately re-render detail panel subtasks without waiting for Realtime
+            if (typeof DetailPanel !== "undefined" && DetailPanel._isOpen) {
+                DetailPanel.renderSubtasks();
+            }
+            renderAll();
+        });
+        li.appendChild(cb); li.appendChild(tag); li.appendChild(content); li.appendChild(doneBtn);
+    } else {
+        li.appendChild(cb); li.appendChild(tag); li.appendChild(content); li.appendChild(delBtn);
+    }
     return li;
 }
 
@@ -2235,10 +2357,27 @@ document.addEventListener("DOMContentLoaded", () => {
             document.querySelectorAll(".date-filter-btn").forEach(b => b.classList.remove("active"));
             btn.classList.add("active");
             activeDateFilter = btn.dataset.date;
-            document.getElementById("date-filter-picker").value = "";
+            // Set picker to today when Today is clicked, clear for All
+            const picker = document.getElementById("date-filter-picker");
+            picker.value = btn.dataset.date === "today" ? formatDateKey(new Date()) : "";
             renderAll();
         });
     });
+
+    // Date nav prev/next
+    function _navigateDate(direction) {
+        const picker = document.getElementById("date-filter-picker");
+        const base = picker.value || formatDateKey(new Date());
+        const d = new Date(base + "T00:00:00");
+        d.setDate(d.getDate() + direction);
+        const newDate = formatDateKey(d);
+        picker.value = newDate;
+        document.querySelectorAll(".date-filter-btn").forEach(b => b.classList.remove("active"));
+        activeDateFilter = newDate;
+        renderAll();
+    }
+    document.getElementById("date-nav-prev").addEventListener("click", () => _navigateDate(-1));
+    document.getElementById("date-nav-next").addEventListener("click", () => _navigateDate(1));
 
     // Date picker
     document.getElementById("date-filter-picker").addEventListener("change", e => {

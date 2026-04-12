@@ -337,6 +337,13 @@ kbd {
 }
 .date-filter-btn:hover { border-color: var(--accent); color: var(--accent); }
 .date-filter-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.date-nav-group { display: flex; align-items: center; gap: 2px; }
+.date-nav-btn {
+    padding: 4px 8px; border: 1px solid var(--border); border-radius: 6px;
+    background: var(--surface); color: var(--text-muted); font-size: 1rem;
+    cursor: pointer; line-height: 1; transition: all 0.15s;
+}
+.date-nav-btn:hover { border-color: var(--accent); color: var(--accent); }
 .date-filter-picker {
     padding: 5px 8px; border: 1px solid var(--border); border-radius: 8px;
     font-size: 0.8rem; color: var(--text2); background: var(--surface); outline: none;
@@ -1123,7 +1130,27 @@ body.sidebar-collapsed .main-content { margin-left: 60px; }
 
 /* Subtasks in detail panel */
 .dp-subtasks { margin-bottom: 8px; }
-.dp-subtasks-label { font-size: 0.75rem; font-weight: 600; color: var(--text-muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
+.dp-subtasks-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.dp-subtasks-label { font-size: 0.75rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+.dp-auto-complete-label { font-size: 0.72rem; color: var(--text-faint); display: flex; align-items: center; gap: 4px; cursor: pointer; }
+.dp-auto-complete-label input { accent-color: var(--accent); }
+.dp-subtask-date {
+    font-size: 0.7rem; padding: 2px 4px; border: 1px solid var(--border);
+    border-radius: 4px; background: var(--surface); color: var(--text-faint);
+    outline: none; width: 120px; flex-shrink: 0;
+}
+.dp-subtask-date:focus { border-color: var(--accent); }
+.dp-subtask-item.overdue .dp-subtask-text { color: var(--danger); }
+.dp-subtask-item.overdue .dp-subtask-date { border-color: var(--danger); color: var(--danger); }
+
+/* Subtask done button in task list */
+.subtask-done-btn {
+    padding: 4px 10px; border: 1px solid var(--accent); border-radius: 12px;
+    background: transparent; color: var(--accent); font-size: 0.75rem;
+    cursor: pointer; white-space: nowrap; flex-shrink: 0; transition: all 0.15s;
+}
+.subtask-done-btn:hover { background: var(--accent); color: #fff; }
+.subtask-done-btn.done { background: var(--accent); color: #fff; opacity: 0.6; }
 
 .dp-subtask-item {
     display: flex; align-items: center; gap: 6px; padding: 4px 6px;
