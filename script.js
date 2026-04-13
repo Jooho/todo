@@ -2299,6 +2299,15 @@ function _scheduleReminders() {
 // ============================================================
 // Section 8: Events & Shortcuts
 // ============================================================
+// Register Service Worker for PWA
+if ("serviceWorker" in navigator) {
+    window.addEventListener("load", () => {
+        navigator.serviceWorker.register("/sw.js")
+            .then(reg => console.log("SW registered:", reg.scope))
+            .catch(err => console.log("SW registration failed:", err));
+    });
+}
+
 document.addEventListener("DOMContentLoaded", () => {
     tasks = loadTasks();
     activeFilter = loadFilter();
@@ -2370,6 +2379,10 @@ document.addEventListener("DOMContentLoaded", () => {
     const googleBtn = document.getElementById("google-login-btn");
     if (googleBtn) googleBtn.addEventListener("click", () => {
         if (typeof Auth !== "undefined") Auth.signInWithGoogle();
+    });
+    const kakaoBtn = document.getElementById("kakao-login-btn");
+    if (kakaoBtn) kakaoBtn.addEventListener("click", () => {
+        if (typeof Auth !== "undefined") Auth.signInWithKakao();
     });
     const skipBtn = document.getElementById("login-skip");
     if (skipBtn) skipBtn.addEventListener("click", (e) => {

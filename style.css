@@ -1493,6 +1493,15 @@ body.dark .sm-member-role-badge.editor { background: #1e3a5f; color: #93c5fd; }
 }
 .google-login-btn:hover { border-color: var(--accent); box-shadow: 0 2px 8px var(--shadow); }
 
+.kakao-login-btn {
+    display: flex; align-items: center; gap: 12px;
+    padding: 14px 24px; border: none; border-radius: 10px;
+    background: #FEE500; color: #3C1E1E; font-size: 1rem;
+    cursor: pointer; width: 100%; justify-content: center;
+    transition: all 0.2s; font-weight: 600; margin-top: 10px;
+}
+.kakao-login-btn:hover { background: #F0D900; box-shadow: 0 2px 8px rgba(0,0,0,0.2); }
+
 .login-divider {
     font-size: 0.8rem; color: var(--text-faint); margin: 16px 0;
 }

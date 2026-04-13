@@ -149,6 +149,26 @@ const Auth = {
         }
     },
 
+    async signInWithKakao() {
+        if (!this._supabase) return;
+        try {
+            const { error } = await this._supabase.auth.signInWithOAuth({
+                provider: "kakao",
+                options: {
+                    redirectTo: window.location.href.split("?")[0].split("#")[0],
+                    scopes: "profile_nickname profile_image",
+                },
+            });
+            if (error) {
+                console.error("Kakao sign in error:", error);
+                if (typeof showToast === "function") showToast("Login failed: " + error.message);
+            }
+        } catch (e) {
+            console.error("Kakao sign in error:", e);
+            if (typeof showToast === "function") showToast("Login error");
+        }
+    },
+
     async signOut() {
         if (!this._supabase) return;
         try {
